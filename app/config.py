@@ -1,7 +1,8 @@
 from functools import lru_cache
 from typing import List
 
-from pydantic import AnyHttpUrl, BaseSettings, Field, validator
+from pydantic import AnyHttpUrl, Field, field_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -26,11 +27,9 @@ class Settings(BaseSettings):
         default="http://localhost:8000", alias="MCP_BASE_URL"
     )
 
-    class Config:
-        env_prefix = "QTICK_"
-        case_sensitive = False
+    model_config = SettingsConfigDict(env_prefix="QTICK_", case_sensitive=False)
 
-    @validator("cors_origins", pre=True)
+    @field_validator("cors_origins", mode="before")
     def _split_origins(cls, value):
         if isinstance(value, str):
             return [origin.strip() for origin in value.split(",") if origin.strip()]
