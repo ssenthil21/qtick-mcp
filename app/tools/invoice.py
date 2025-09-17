@@ -1,29 +1,19 @@
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends, HTTPException
+
+from app.dependencies.services import get_invoice_service
 from app.schemas.billing import InvoiceRequest, InvoiceResponse
-from datetime import datetime
+from app.services import InvoiceService
+from app.services.exceptions import ServiceError
 
 router = APIRouter()
 
 @router.post("/create", response_model=InvoiceResponse)
-def create_invoice(req: InvoiceRequest):
-    total = 0.0
-    for item in req.items:
-        # Support both 'unit_price' and alias 'price' at API layer (defensive)
-        unit_price = getattr(item, "unit_price", None)
-        if unit_price is None:
-            unit_price = getattr(item, "price", None)
-        if unit_price is None:
-            unit_price = 0.0
-        line = float(item.quantity) * float(unit_price)
-        line = line * (1.0 + float(item.tax_rate))
-        total += line
-    total = round(total, 2)
-    return InvoiceResponse(
-        invoice_id="INV-10001",
-        total=total,
-        currency=req.currency,
-        created_at=datetime.now().isoformat(),
-        payment_link=f"https://pay.qtick.co/INV-10001",
-        status="created"
-    )
+async def create_invoice(
+    req: InvoiceRequest,
+    service: InvoiceService = Depends(get_invoice_service),
+):
+    try:
+        return await service.create(req)
+    except ServiceError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc

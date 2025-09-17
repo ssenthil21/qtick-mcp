@@ -1,20 +1,37 @@
 
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.config import get_settings
+from app.dependencies.services import get_java_client_cached
+
 # Import routers directly from submodules (safer under reload)
+from app.tools.analytics import router as analytics_router
+from app.tools.agent import router as agent_router
 from app.tools.appointment import router as appointment_router
 from app.tools.campaign import router as campaign_router
-from app.tools.analytics import router as analytics_router
 from app.tools.invoice import router as invoice_router
 from app.tools.leads import router as leads_router
-from app.tools.agent import router as agent_router
 
-app = FastAPI(title="QTick MCP Service")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    settings = get_settings()
+    client = get_java_client_cached()
+    try:
+        yield
+    finally:
+        await client.close()
+
+
+settings = get_settings()
+app = FastAPI(title=settings.app_name, lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5500", "http://127.0.0.1:5500"],
+    allow_origins=[str(origin) for origin in settings.cors_origins],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

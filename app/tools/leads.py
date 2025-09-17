@@ -1,15 +1,19 @@
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends, HTTPException
+
+from app.dependencies.services import get_lead_service
 from app.schemas.lead import LeadCreateRequest, LeadCreateResponse
-from datetime import datetime
+from app.services import LeadService
+from app.services.exceptions import ServiceError
 
 router = APIRouter()
 
 @router.post("/create", response_model=LeadCreateResponse)
-def create_lead(req: LeadCreateRequest):
-    # mock
-    return LeadCreateResponse(
-        lead_id="LEAD-90001",
-        status="new",
-        created_at=datetime.now().isoformat()
-    )
+async def create_lead(
+    req: LeadCreateRequest,
+    service: LeadService = Depends(get_lead_service),
+):
+    try:
+        return await service.create(req)
+    except ServiceError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
