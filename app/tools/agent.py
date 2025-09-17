@@ -1,29 +1,35 @@
 
-from fastapi import APIRouter, HTTPException, Query
+from functools import lru_cache
+import os
+from typing import List, Tuple
+
+from fastapi import APIRouter, Depends, HTTPException, Query
+
+from app.config import Settings, get_settings
 from app.schemas.agent import AgentRunRequest, AgentRunResponse, AgentToolsResponse
 
-import os
-from typing import Optional, List
-
+from langchain.agents import AgentType, initialize_agent
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain.agents import initialize_agent, AgentType
 
 from langchain_tools.qtick import (
-    appointment_tool,
+    analytics_tool,
     appointment_list_tool,
+    appointment_tool,
+    campaign_tool,
+    configure,
+    datetime_tool,
     invoice_create_tool,
     lead_create_tool,
-    campaign_tool,
-    analytics_tool,
-    datetime_tool,
 )
 
 router = APIRouter()
 
-_AGENT = None
-_TOOLS = None
 
-def _build_tools():
+def _cache_key(settings: Settings) -> Tuple[str, str, float]:
+    return (str(settings.mcp_base_url), settings.agent_google_model, settings.agent_temperature)
+
+
+def _build_tools() -> List:
     return [
         datetime_tool(),
         appointment_tool(),
@@ -34,43 +40,61 @@ def _build_tools():
         analytics_tool(),
     ]
 
-def _build_agent():
-    global _AGENT, _TOOLS
-    if _AGENT is not None:
-        return _AGENT
-    api_key = os.getenv("GOOGLE_API_KEY")
-    if not api_key:
+
+@lru_cache(maxsize=1)
+def _get_agent_bundle(cache_key: Tuple[str, str, float]):
+    settings = get_settings()
+    configure(base_url=str(settings.mcp_base_url))
+    if settings.google_api_key:
+        os.environ.setdefault("GOOGLE_API_KEY", settings.google_api_key)
+    elif not os.getenv("GOOGLE_API_KEY"):
         raise HTTPException(status_code=500, detail="GOOGLE_API_KEY not set on server")
-    llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash", temperature=0)
-    _TOOLS = _build_tools()
-    _AGENT = initialize_agent(
-        tools=_TOOLS,
+
+    llm = ChatGoogleGenerativeAI(
+        model=settings.agent_google_model,
+        temperature=settings.agent_temperature,
+    )
+    tools = _build_tools()
+    agent = initialize_agent(
+        tools=tools,
         llm=llm,
         agent=AgentType.STRUCTURED_CHAT_ZERO_SHOT_REACT_DESCRIPTION,
         verbose=False,
     )
-    return _AGENT
+    return agent, tools
+
+
+def _get_agent(settings: Settings) -> Tuple[object, List]:
+    cache_key = _cache_key(settings)
+    return _get_agent_bundle(cache_key)
+
 
 @router.post("/run", response_model=AgentRunResponse)
-def run_agent(req: AgentRunRequest):
+async def run_agent(
+    req: AgentRunRequest,
+    settings: Settings = Depends(get_settings),
+):
     try:
-        agent = _build_agent()
+        agent, _ = _get_agent(settings)
         output = agent.run(req.prompt)
         return AgentRunResponse(output=output)
     except HTTPException:
         raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Agent error: {e}")
+    except Exception as exc:  # pragma: no cover - runtime dependency
+        raise HTTPException(status_code=500, detail=f"Agent error: {exc}") from exc
 
-# Optional GET for quick browser testing: /agent/run?prompt=...
+
 @router.get("/run", response_model=AgentRunResponse)
-def run_agent_get(prompt: str = Query(..., description="Your natural language instruction")):
-    return run_agent(AgentRunRequest(prompt=prompt))
+async def run_agent_get(
+    prompt: str = Query(..., description="Your natural language instruction"),
+    settings: Settings = Depends(get_settings),
+):
+    return await run_agent(AgentRunRequest(prompt=prompt), settings)
+
 
 @router.get("/tools", response_model=AgentToolsResponse)
-def list_agent_tools():
-    agent = _build_agent()
-    tools = _TOOLS or []
+async def list_agent_tools(settings: Settings = Depends(get_settings)):
+    _, tools = _get_agent(settings)
     return AgentToolsResponse(
-        tools=[{"name": t.name, "description": t.description} for t in tools]
+        tools=[{"name": tool.name, "description": tool.description} for tool in tools]
     )

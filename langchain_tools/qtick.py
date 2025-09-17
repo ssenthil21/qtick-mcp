@@ -1,5 +1,6 @@
 
 from typing import List, Optional
+import os
 import requests
 from pydantic import BaseModel, Field, validator
 from datetime import datetime, timedelta
@@ -8,7 +9,15 @@ import re
 from zoneinfo import ZoneInfo
 from langchain.tools import StructuredTool
 
-MCP_BASE = "http://localhost:8000"
+MCP_BASE = os.getenv("QTICK_MCP_BASE_URL", "http://localhost:8000")
+
+
+def configure(*, base_url: Optional[str] = None) -> None:
+    """Configure the MCP base URL used by the LangChain tools."""
+
+    global MCP_BASE
+    if base_url:
+        MCP_BASE = base_url.rstrip("/")
 
 # ---------- Appointment Book ----------
 class BookAppointmentInput(BaseModel):
@@ -252,4 +261,5 @@ __all__ = [
     "campaign_tool",
     "analytics_tool",
     "datetime_tool",
+    "configure",
 ]
