@@ -1,4 +1,5 @@
 
+import asyncio
 from functools import lru_cache
 import os
 from typing import List, Tuple
@@ -76,7 +77,7 @@ async def run_agent(
 ):
     try:
         agent, _ = _get_agent(settings)
-        output = agent.run(req.prompt)
+        output = await asyncio.to_thread(agent.run, req.prompt)
         return AgentRunResponse(output=output)
     except HTTPException:
         raise
