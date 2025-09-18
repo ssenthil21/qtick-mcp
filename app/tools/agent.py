@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.config import Settings, get_settings
 from app.schemas.agent import AgentRunRequest, AgentRunResponse, AgentToolsResponse
+from app.services.agent_logging import AgentLoggingCallbackHandler
 
 from langchain.agents import AgentType, initialize_agent
 from langchain_google_genai import ChatGoogleGenerativeAI
@@ -61,6 +62,7 @@ def _get_agent_bundle(cache_key: Tuple[str, str, float]):
         llm=llm,
         agent=AgentType.STRUCTURED_CHAT_ZERO_SHOT_REACT_DESCRIPTION,
         verbose=False,
+        callbacks=[AgentLoggingCallbackHandler()],
     )
     return agent, tools
 
