@@ -1,8 +1,25 @@
+import os
 from functools import lru_cache
 from typing import List
 
 from pydantic import AnyHttpUrl, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+def runtime_default_mcp_base_url() -> str:
+    """Return the default MCP base URL based on the runtime environment."""
+
+    render_url = os.getenv("RENDER_EXTERNAL_URL")
+    if render_url:
+        return render_url.rstrip("/")
+
+    port = os.getenv("PORT")
+    if port:
+        host = os.getenv("QTICK_RUNTIME_HOST", "127.0.0.1")
+        scheme = os.getenv("QTICK_RUNTIME_SCHEME", "http")
+        return f"{scheme}://{host}:{port}".rstrip("/")
+
+    return "http://localhost:8000"
 
 
 class Settings(BaseSettings):
@@ -24,7 +41,7 @@ class Settings(BaseSettings):
     agent_google_model: str = Field(default="gemini-1.5-flash", alias="AGENT_GOOGLE_MODEL")
     agent_temperature: float = Field(default=0.0, alias="AGENT_TEMPERATURE")
     mcp_base_url: AnyHttpUrl = Field(
-        default="http://localhost:8000", alias="MCP_BASE_URL"
+        default_factory=runtime_default_mcp_base_url, alias="MCP_BASE_URL"
     )
 
     model_config = SettingsConfigDict(env_prefix="QTICK_", case_sensitive=False)
