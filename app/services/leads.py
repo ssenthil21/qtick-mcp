@@ -1,28 +1,34 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime
 
 from app.clients.java import JavaServiceClient
 from app.schemas.lead import LeadCreateRequest, LeadCreateResponse
 from app.services.exceptions import ServiceError
+from app.services.mock_store import LeadRepository, get_mock_store
 
 logger = logging.getLogger(__name__)
 
 
 class LeadService:
-    def __init__(self, client: JavaServiceClient) -> None:
+    def __init__(
+        self,
+        client: JavaServiceClient,
+        *,
+        repository: LeadRepository | None = None,
+    ) -> None:
         self._client = client
+        self._repository = repository
+        if self._client.use_mock_data:
+            self._repository = repository or get_mock_store().leads
 
     async def create(self, request: LeadCreateRequest) -> LeadCreateResponse:
         logger.info("Creating lead for %s", request.name)
         if self._client.use_mock_data:
             await self._client.simulate_latency()
-            return LeadCreateResponse(
-                lead_id="LEAD-90001",
-                status="new",
-                created_at=datetime.now().isoformat(),
-            )
+            if not self._repository:
+                raise RuntimeError("Mock lead repository not configured")
+            return await self._repository.create(request)
 
         try:
             payload = request.model_dump()
