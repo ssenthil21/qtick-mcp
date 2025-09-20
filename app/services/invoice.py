@@ -1,43 +1,34 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime
 
 from app.clients.java import JavaServiceClient
 from app.schemas.billing import InvoiceRequest, InvoiceResponse
 from app.services.exceptions import ServiceError
+from app.services.mock_store import InvoiceRepository, get_mock_store
 
 logger = logging.getLogger(__name__)
 
 
 class InvoiceService:
-    def __init__(self, client: JavaServiceClient) -> None:
+    def __init__(
+        self,
+        client: JavaServiceClient,
+        *,
+        repository: InvoiceRepository | None = None,
+    ) -> None:
         self._client = client
+        self._repository = repository
+        if self._client.use_mock_data:
+            self._repository = repository or get_mock_store().invoices
 
     async def create(self, request: InvoiceRequest) -> InvoiceResponse:
         logger.debug("Creating invoice for %s", request.customer_name)
         if self._client.use_mock_data:
             await self._client.simulate_latency()
-            total = 0.0
-            for item in request.items:
-                unit_price = getattr(item, "unit_price", None)
-                if unit_price is None:
-                    unit_price = getattr(item, "price", None)
-                if unit_price is None:
-                    unit_price = 0.0
-                line_total = float(item.quantity) * float(unit_price)
-                line_total *= 1.0 + float(item.tax_rate)
-                total += line_total
-            total = round(total, 2)
-            invoice_id = "INV-10001"
-            return InvoiceResponse(
-                invoice_id=invoice_id,
-                total=total,
-                currency=request.currency,
-                created_at=datetime.now().isoformat(),
-                payment_link=f"https://pay.qtick.co/{invoice_id}",
-                status="created",
-            )
+            if not self._repository:
+                raise RuntimeError("Mock invoice repository not configured")
+            return await self._repository.create(request)
 
         try:
             payload = request.model_dump()
