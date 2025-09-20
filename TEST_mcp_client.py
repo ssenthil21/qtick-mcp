@@ -5,7 +5,7 @@ from mcp.client.session import ClientSession
 
 # Try Streamable HTTP first
 try:
-    from mcp.client.streamablehttp import streamablehttp_client
+    from mcp.client.streamable_http import streamablehttp_client
     TRANSPORT = "streamablehttp"
 except Exception:
     streamablehttp_client = None
