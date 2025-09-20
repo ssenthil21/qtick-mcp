@@ -30,6 +30,8 @@ class Settings(BaseSettings):
         default_factory=lambda: [
             "http://localhost:5500",
             "http://127.0.0.1:5500",
+            "http://localhost:2500",
+            "http://127.0.0.1:2500",
         ]
     )
     java_service_base_url: AnyHttpUrl | None = Field(
