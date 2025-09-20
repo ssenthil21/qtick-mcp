@@ -1,23 +1,23 @@
 
+# app/tools/mcp.py
 from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, HTTPException, Header, Depends
 import os, requests
+from pydantic import BaseModel, Field
 
 router = APIRouter()
 
-# ---- Security (optional) ----
 def require_api_key(x_api_key: Optional[str] = Header(None)):
     expected = os.getenv("QTF_API_KEY")
     if expected and x_api_key != expected:
         raise HTTPException(status_code=401, detail="Invalid or missing API key")
     return True
 
-# ---- MCP Tool Catalog ----
 TOOLS: List[Dict[str, Any]] = [
     {
         "name": "appointments.book",
         "description": "Book an appointment in QTick.",
-        "input_schema": {
+        "inputSchema": {
             "type": "object",
             "properties": {
                 "business_id": {"type":"string"},
@@ -31,7 +31,7 @@ TOOLS: List[Dict[str, Any]] = [
     {
         "name": "appointments.list",
         "description": "List appointments for a business with optional date range/status/pagination.",
-        "input_schema": {
+        "inputSchema": {
             "type": "object",
             "properties": {
                 "business_id":{"type":"string"},
@@ -47,7 +47,7 @@ TOOLS: List[Dict[str, Any]] = [
     {
         "name": "invoice.create",
         "description": "Create an invoice with line items.",
-        "input_schema": {
+        "inputSchema": {
             "type": "object",
             "properties": {
                 "business_id":{"type":"string"},
@@ -74,7 +74,7 @@ TOOLS: List[Dict[str, Any]] = [
     {
         "name": "leads.create",
         "description": "Create a new customer lead.",
-        "input_schema": {
+        "inputSchema": {
             "type": "object",
             "properties": {
                 "business_id":{"type":"string"},
@@ -90,7 +90,7 @@ TOOLS: List[Dict[str, Any]] = [
     {
         "name": "campaign.send_whatsapp",
         "description": "Send a WhatsApp campaign message to a customer.",
-        "input_schema": {
+        "inputSchema": {
             "type":"object",
             "properties":{
                 "customer_name":{"type":"string"},
@@ -105,7 +105,7 @@ TOOLS: List[Dict[str, Any]] = [
     {
         "name": "analytics.report",
         "description": "Fetch analytics for a business over a period.",
-        "input_schema": {
+        "inputSchema": {
             "type":"object",
             "properties":{
                 "business_id":{"type":"string"},
@@ -121,62 +121,33 @@ TOOLS: List[Dict[str, Any]] = [
 def mcp_tools_list():
     return {"tools": TOOLS}
 
-# ---- Invocation ----
-from pydantic import BaseModel, Field
-
 class ToolCall(BaseModel):
     name: str = Field(..., description="Tool name from /tools/list")
     arguments: Dict[str, Any] = Field(default_factory=dict)
 
 def _self_base() -> str:
-    # Allow override by env; default to local if unset
-    # On Render, this should be the PUBLIC base (e.g., https://your.onrender.com)
     return os.getenv("MCP_PUBLIC_BASE", "http://127.0.0.1:8000")
 
 @router.post("/tools/call", dependencies=[Depends(require_api_key)])
 def mcp_tools_call(call: ToolCall):
     base = _self_base()
     try:
-        # Route by tool name; forward to existing REST endpoints
-        if call.name == "appointments.book":
-            url = f"{base}/tools/appointment/book"
-            resp = requests.post(url, json=call.arguments, timeout=30)
-            resp.raise_for_status()
-            return resp.json()
-
-        if call.name == "appointments.list":
-            url = f"{base}/tools/appointment/list"
-            resp = requests.post(url, json=call.arguments, timeout=30)
-            resp.raise_for_status()
-            return resp.json()
-
-        if call.name == "invoice.create":
-            url = f"{base}/tools/invoice/create"
-            resp = requests.post(url, json=call.arguments, timeout=30)
-            resp.raise_for_status()
-            return resp.json()
-
-        if call.name == "leads.create":
-            url = f"{base}/tools/leads/create"
-            resp = requests.post(url, json=call.arguments, timeout=30)
-            resp.raise_for_status()
-            return resp.json()
-
-        if call.name == "campaign.send_whatsapp":
-            url = f"{base}/tools/campaign/sendWhatsApp"
-            resp = requests.post(url, json=call.arguments, timeout=30)
-            resp.raise_for_status()
-            return resp.json()
-
-        if call.name == "analytics.report":
-            url = f"{base}/tools/analytics/report"
-            resp = requests.post(url, json=call.arguments, timeout=30)
-            resp.raise_for_status()
-            return resp.json()
-
-        raise HTTPException(status_code=404, detail=f"Unknown tool: {call.name}")
+        routes = {
+            "appointments.book": "/tools/appointment/book",
+            "appointments.list": "/tools/appointment/list",
+            "invoice.create": "/tools/invoice/create",
+            "leads.create": "/tools/leads/create",
+            "campaign.send_whatsapp": "/tools/campaign/sendWhatsApp",
+            "analytics.report": "/tools/analytics/report",
+        }
+        if call.name not in routes:
+            raise HTTPException(status_code=404, detail=f"Unknown tool: {call.name}")
+        url = f"{base}{routes[call.name]}"
+        headers = {"X-API-Key": os.getenv("QTF_API_KEY")} if os.getenv("QTF_API_KEY") else None
+        resp = requests.post(url, json=call.arguments, timeout=30, headers=headers)
+        resp.raise_for_status()
+        return resp.json()
     except requests.HTTPError as e:
-        # bubble up the underlying service error
         status = e.response.status_code if e.response is not None else 500
         detail = e.response.text if e.response is not None else str(e)
         raise HTTPException(status_code=status, detail=detail)

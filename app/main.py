@@ -15,6 +15,10 @@ from app.tools.campaign import router as campaign_router
 from app.tools.invoice import router as invoice_router
 from app.tools.leads import router as leads_router
 from app.tools.mcp import router as mcp_router
+from app.tools.agent import router as agent_router
+from app.mcp_server import mcp
+from starlette.routing import Mount
+
 
 
 @asynccontextmanager
@@ -45,3 +49,5 @@ app.include_router(invoice_router, prefix="/tools/invoice")
 app.include_router(leads_router, prefix="/tools/leads")
 app.include_router(agent_router, prefix="/agent")
 app.include_router(mcp_router)  # Exposes /tools/list and /tools/call
+# Mount the MCP Streamable HTTP server at /mcp
+app.router.routes.append(Mount("/mcp", app=mcp.streamable_http_app()))
