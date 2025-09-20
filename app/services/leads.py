@@ -15,7 +15,7 @@ class LeadService:
         self._client = client
 
     async def create(self, request: LeadCreateRequest) -> LeadCreateResponse:
-        logger.debug("Creating lead for %s", request.name)
+        logger.info("Creating lead for %s", request.name)
         if self._client.use_mock_data:
             await self._client.simulate_latency()
             return LeadCreateResponse(

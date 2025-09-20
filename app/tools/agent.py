@@ -52,10 +52,9 @@ def _get_agent_bundle(cache_key: Tuple[str, str, float]):
     elif not os.getenv("GOOGLE_API_KEY"):
         raise HTTPException(status_code=500, detail="GOOGLE_API_KEY not set on server")
 
-    llm = ChatGoogleGenerativeAI(
-        model=settings.agent_google_model,
-        temperature=settings.agent_temperature,
-    )
+    #api_key = "AIzaSyDUucupw9yBarvslvctDJ_SraQfAuN0H78"
+    #llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash", temperature=0,google_api_key=api_key)
+    llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash", temperature=0)
     tools = _build_tools()
     agent = initialize_agent(
         tools=tools,

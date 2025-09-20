@@ -14,6 +14,7 @@ from app.tools.appointment import router as appointment_router
 from app.tools.campaign import router as campaign_router
 from app.tools.invoice import router as invoice_router
 from app.tools.leads import router as leads_router
+from app.tools.mcp import router as mcp_router
 
 
 @asynccontextmanager
@@ -43,3 +44,4 @@ app.include_router(analytics_router, prefix="/tools/analytics")
 app.include_router(invoice_router, prefix="/tools/invoice")
 app.include_router(leads_router, prefix="/tools/leads")
 app.include_router(agent_router, prefix="/agent")
+app.include_router(mcp_router)  # Exposes /tools/list and /tools/call

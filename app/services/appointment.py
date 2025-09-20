@@ -21,7 +21,7 @@ class AppointmentService:
         self._client = client
 
     async def book(self, request: AppointmentRequest) -> AppointmentResponse:
-        logger.debug("Booking appointment for %s", request.customer_name)
+        logger.info("Booking appointment for %s", request.customer_name)
         if self._client.use_mock_data:
             await self._client.simulate_latency()
             return AppointmentResponse(
@@ -41,7 +41,7 @@ class AppointmentService:
             raise ServiceError("Failed to book appointment", cause=exc)
 
     async def list(self, request: AppointmentListRequest) -> AppointmentListResponse:
-        logger.debug("Listing appointments for business %s", request.business_id)
+        logger.info("Listing appointments for business %s", request.business_id)
         if self._client.use_mock_data:
             await self._client.simulate_latency()
             items: List[AppointmentSummary] = [
