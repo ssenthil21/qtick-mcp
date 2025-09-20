@@ -1,15 +1,28 @@
 
-from typing import List, Optional
 import os
-import requests
-from pydantic import BaseModel, Field, validator
 from datetime import datetime, timedelta
-import dateparser
 import re
-from zoneinfo import ZoneInfo
-from langchain.tools import StructuredTool
+from typing import List, Optional
 
-MCP_BASE = os.getenv("QTICK_MCP_BASE_URL", "http://localhost:8000")
+import dateparser
+import requests
+from langchain.tools import StructuredTool
+from pydantic import BaseModel, Field, validator
+from zoneinfo import ZoneInfo
+
+from app.config import runtime_default_mcp_base_url
+
+
+def _resolve_mcp_base_url() -> str:
+    """Return the MCP base URL honouring explicit overrides when present."""
+
+    base = os.getenv("QTICK_MCP_BASE_URL")
+    if base:
+        return base.rstrip("/")
+    return runtime_default_mcp_base_url()
+
+
+MCP_BASE = _resolve_mcp_base_url()
 
 
 def configure(*, base_url: Optional[str] = None) -> None:
