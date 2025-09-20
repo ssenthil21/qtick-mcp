@@ -18,6 +18,7 @@ from app.tools.mcp import router as mcp_router
 from app.tools.agent import router as agent_router
 from app.mcp_server import mcp
 from starlette.routing import Mount
+from app.health import router as health_router 
 
 
 
@@ -49,5 +50,9 @@ app.include_router(invoice_router, prefix="/tools/invoice")
 app.include_router(leads_router, prefix="/tools/leads")
 app.include_router(agent_router, prefix="/agent")
 app.include_router(mcp_router)  # Exposes /tools/list and /tools/call
+app.include_router(health_router)    
 # Mount the MCP Streamable HTTP server at /mcp
 app.router.routes.append(Mount("/mcp", app=mcp.streamable_http_app()))
+# add this line for local testing with the Anthropic MCP client:
+app.router.routes.append(Mount("/sse", app=mcp.sse_app()))
+
