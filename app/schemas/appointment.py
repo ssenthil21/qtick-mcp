@@ -3,18 +3,20 @@ from pydantic import BaseModel
 from typing import List, Optional
 
 class AppointmentRequest(BaseModel):
-    business_id: str
+    business_id: int
     customer_name: str
     service_id: int
     datetime: str
 
 class AppointmentResponse(BaseModel):
     status: str
-    appointment_id: str
-    queue_number: str
+    appointment_id: Optional[str] = None
+    queue_number: Optional[str] = None
+    message: Optional[str] = None
+    suggested_slots: Optional[List[str]] = None
 
 class AppointmentListRequest(BaseModel):
-    business_id: str
+    business_id: int
     date_from: Optional[str] = None  # ISO date
     date_to: Optional[str] = None    # ISO date
     status: Optional[str] = None     # confirmed | pending | cancelled

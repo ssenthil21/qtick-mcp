@@ -22,6 +22,15 @@ from app.services.leads import LeadService
 from app.services.mock_store import get_mock_store, reset_mock_store
 
 
+GENERIC_BUSINESS_ID = 4321
+ANALYTICS_BUSINESS_ID = 6789
+LEADS_BUSINESS_ID = 5555
+REMOTE_BUSINESS_ID = 9999
+INVOICE_BUSINESS_ID = 3210
+SEED_CHILLBREEZE_ID = 1001
+REPORT_BUSINESS_ID = 5678
+
+
 @pytest.fixture(autouse=True)
 def _reset_store() -> None:
     reset_mock_store()
@@ -45,13 +54,13 @@ def test_mock_appointment_service_persists_records() -> None:
     service = AppointmentService(client)
 
     first_request = AppointmentRequest(
-        business_id="biz-123",
+        business_id=GENERIC_BUSINESS_ID,
         customer_name="Jamie",
         service_id=101,
         datetime="2025-09-06T17:00:00+08:00",
     )
     second_request = AppointmentRequest(
-        business_id="biz-123",
+        business_id=GENERIC_BUSINESS_ID,
         customer_name="Alex",
         service_id=202,
         datetime="2025-09-06T18:30:00+08:00",
@@ -65,7 +74,7 @@ def test_mock_appointment_service_persists_records() -> None:
     assert first_response.queue_number == "B01"
     assert second_response.queue_number == "B02"
 
-    list_request = AppointmentListRequest(business_id="biz-123", page=1, page_size=10)
+    list_request = AppointmentListRequest(business_id=GENERIC_BUSINESS_ID, page=1, page_size=10)
     list_response = asyncio.run(service.list(list_request))
 
     assert list_response.total == 2
@@ -80,13 +89,34 @@ def test_mock_appointment_service_persists_records() -> None:
     assert stored_second and stored_second["customer_name"] == "Alex"
 
 
+def test_booking_conflict_returns_suggestions() -> None:
+    client = MockLatencyClient()
+    service = AppointmentService(client)
+
+    conflict_time = "2025-09-05T17:00:00+08:00"
+    request = AppointmentRequest(
+        business_id=SEED_CHILLBREEZE_ID,
+        customer_name="Taylor",
+        service_id=101,
+        datetime=conflict_time,
+    )
+
+    response = asyncio.run(service.book(request))
+
+    assert response.status == "conflict"
+    assert response.appointment_id is None
+    assert response.queue_number is None
+    assert response.suggested_slots is not None and len(response.suggested_slots) > 0
+    assert all(slot != conflict_time for slot in response.suggested_slots)
+
+
 def test_mock_invoice_and_analytics_use_shared_store() -> None:
     client = MockLatencyClient()
     appointments = AppointmentService(client)
     invoices = InvoiceService(client)
     analytics = AnalyticsService(client)
 
-    business_id = "biz-analytics"
+    business_id = ANALYTICS_BUSINESS_ID
 
     asyncio.run(
         appointments.book(
@@ -142,7 +172,7 @@ def test_lead_repository_stores_created_leads() -> None:
     client = MockLatencyClient()
     service = LeadService(client)
 
-    request = LeadCreateRequest(business_id="biz-555", name="Morgan", email="m@example.com")
+    request = LeadCreateRequest(business_id=LEADS_BUSINESS_ID, name="Morgan", email="m@example.com")
     response = asyncio.run(service.create(request))
 
     assert response.lead_id.startswith("LEAD-")
@@ -153,7 +183,7 @@ def test_lead_repository_stores_created_leads() -> None:
     stored = asyncio.run(store.leads.get(response.lead_id))
     assert stored and stored["email"] == "m@example.com"
 
-    leads = asyncio.run(store.leads.list("biz-555"))
+    leads = asyncio.run(store.leads.list(LEADS_BUSINESS_ID))
     assert len(leads) == 1
     assert leads[0]["lead_id"] == response.lead_id
     assert leads[0]["email"] == "m@example.com"
@@ -185,7 +215,7 @@ def test_campaign_repository_tracks_sent_messages() -> None:
 
 def test_appointment_service_book_real_mode_invokes_client_post() -> None:
     request = AppointmentRequest(
-        business_id="biz-999",
+        business_id=REMOTE_BUSINESS_ID,
         customer_name="Alex",
         service_id=501,
         datetime="2025-09-06T17:00:00+08:00",
@@ -218,7 +248,7 @@ def test_seeded_chillbreeze_appointments_available() -> None:
     client = MockLatencyClient()
     service = AppointmentService(client)
 
-    list_request = AppointmentListRequest(business_id="chillbreeze", page=1, page_size=10)
+    list_request = AppointmentListRequest(business_id=SEED_CHILLBREEZE_ID, page=1, page_size=10)
     response = asyncio.run(service.list(list_request))
 
     assert response.total >= 2
@@ -245,6 +275,8 @@ def test_business_directory_search_and_lookup() -> None:
 
     assert lookup_response.matches
     assert lookup_response.message is not None
+    assert "Available haircut services" in lookup_response.message
+    assert lookup_response.business.business_id == SEED_CHILLBREEZE_ID
 
 
 def test_lead_create_prompts_follow_up_and_list() -> None:
@@ -252,7 +284,7 @@ def test_lead_create_prompts_follow_up_and_list() -> None:
     service = LeadService(client)
 
     request = LeadCreateRequest(
-        business_id="chillbreeze",
+        business_id=SEED_CHILLBREEZE_ID,
         name="Priya",
         phone="1234",
         email="priya@example.com",
@@ -262,7 +294,7 @@ def test_lead_create_prompts_follow_up_and_list() -> None:
     assert response.follow_up_required is True
     assert "follow-up" in response.next_action.lower()
 
-    list_request = LeadListRequest(business_id="chillbreeze")
+    list_request = LeadListRequest(business_id=SEED_CHILLBREEZE_ID)
     list_response = asyncio.run(service.list(list_request))
 
     assert list_response.total >= 1
@@ -274,13 +306,13 @@ def test_invoice_list_returns_created_records() -> None:
     service = InvoiceService(client)
 
     create_request = InvoiceRequest(
-        business_id="chillbreeze",
+        business_id=SEED_CHILLBREEZE_ID,
         customer_name="Alex",
         items=[LineItem(description="Haircut", quantity=1, unit_price=30.0)],
     )
     created = asyncio.run(service.create(create_request))
 
-    list_request = InvoiceListRequest(business_id="chillbreeze")
+    list_request = InvoiceListRequest(business_id=SEED_CHILLBREEZE_ID)
     list_response = asyncio.run(service.list(list_request))
 
     assert list_response.total >= 1
@@ -289,7 +321,7 @@ def test_invoice_list_returns_created_records() -> None:
 
 def test_invoice_service_real_mode_invokes_client_post() -> None:
     request = InvoiceRequest(
-        business_id="biz-321",
+        business_id=INVOICE_BUSINESS_ID,
         customer_name="Taylor",
         items=[LineItem(description="Package", quantity=1, unit_price=199.0)],
     )
@@ -321,7 +353,7 @@ def test_invoice_service_real_mode_invokes_client_post() -> None:
 
 
 def test_analytics_service_real_mode_invokes_client_post() -> None:
-    request = AnalyticsRequest(business_id="biz-567", metrics=["revenue"], period="monthly")
+    request = AnalyticsRequest(business_id=REPORT_BUSINESS_ID, metrics=["revenue"], period="monthly")
 
     payload = {
         "footfall": 120,

@@ -5,6 +5,7 @@ import asyncio
 from fastapi.testclient import TestClient
 
 from app.main import app
+from app.schemas.billing import InvoiceRequest, LineItem
 from app.schemas.lead import LeadCreateRequest
 from app.services.mock_store import get_mock_store, reset_mock_store
 
@@ -30,7 +31,7 @@ def test_mock_data_view_includes_created_records() -> None:
     asyncio.run(
         store.leads.create(
             LeadCreateRequest(
-                business_id="chillbreeze",
+                business_id=1001,
                 name="Test Lead",
                 phone="1234567",
                 email="lead@example.com",
@@ -47,3 +48,33 @@ def test_mock_data_view_includes_created_records() -> None:
     body = response.text
     assert "Test Lead" in body
     assert "lead@example.com" in body
+
+
+def test_mock_data_view_displays_invoices() -> None:
+    reset_mock_store()
+    store = get_mock_store()
+
+    invoice = asyncio.run(
+        store.invoices.create(
+            InvoiceRequest(
+                business_id=1001,
+                customer_name="Jane Client",
+                items=[
+                    LineItem(
+                        description="Signature Haircut",
+                        quantity=1,
+                        unit_price=38.0,
+                        tax_rate=0.08,
+                    )
+                ],
+            )
+        )
+    )
+
+    client = TestClient(app)
+    response = client.get("/mock-data")
+    assert response.status_code == 200
+
+    body = response.text
+    assert invoice.invoice_id in body
+    assert f"{invoice.total:.2f}" in body

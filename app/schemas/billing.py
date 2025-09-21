@@ -12,7 +12,7 @@ class LineItem(BaseModel):
     tax_rate: float = 0.0               # e.g. 0.08 for 8%
 
 class InvoiceRequest(BaseModel):
-    business_id: str
+    business_id: int
     customer_name: str
     items: List[LineItem]
     currency: str = "SGD"
@@ -37,7 +37,7 @@ class InvoiceSummary(BaseModel):
 
 
 class InvoiceListRequest(BaseModel):
-    business_id: str
+    business_id: int
 
 
 class InvoiceListResponse(BaseModel):

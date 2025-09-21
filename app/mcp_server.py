@@ -13,7 +13,7 @@ mcp = FastMCP("qtick_mcp")
 # --------------------------
 class Appointment(BaseModel):
     id: str
-    business_id: str
+    business_id: int
     customer_name: str
     service: str
     start_time: str  # ISO 8601 string
@@ -29,7 +29,7 @@ class InvoiceItem(BaseModel):
 # Tools: inputs/outputs
 # --------------------------
 class AppointmentBookInput(BaseModel):
-    business_id: str = Field(..., description="Business ID, e.g. 'chillbreeze'")
+    business_id: int = Field(..., description="Numeric business identifier")
     customer_name: str = Field(..., description="Customer full name")
     service: str = Field(..., description="Service name, e.g. 'haircut'")
     start_time: str = Field(
@@ -40,7 +40,7 @@ class AppointmentBookOutput(Appointment):
     pass
 
 class AppointmentListInput(BaseModel):
-    business_id: str
+    business_id: int
     date_from: Optional[str] = Field(None, description="ISO date/time start (inclusive)")
     date_to: Optional[str] = Field(None, description="ISO date/time end (inclusive)")
     status: Optional[Literal["booked", "completed", "cancelled"]] = None
@@ -49,7 +49,7 @@ class AppointmentListOutput(BaseModel):
     appointments: List[Appointment]
 
 class InvoiceCreateInput(BaseModel):
-    business_id: str
+    business_id: int
     customer_name: str
     currency: str = "SGD"
     items: List[InvoiceItem]
@@ -60,7 +60,7 @@ class InvoiceCreateOutput(BaseModel):
     currency: str
 
 class LeadCreateInput(BaseModel):
-    business_id: str
+    business_id: int
     name: str
     phone: Optional[str] = None
     email: Optional[str] = None
