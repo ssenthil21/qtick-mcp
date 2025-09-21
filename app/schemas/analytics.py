@@ -3,7 +3,7 @@ from pydantic import BaseModel
 from typing import List
 
 class AnalyticsRequest(BaseModel):
-    business_id: str
+    business_id: int
     metrics: List[str]
     period: str
 

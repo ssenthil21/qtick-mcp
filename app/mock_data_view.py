@@ -77,7 +77,7 @@ def _service_rows(businesses: Iterable[BusinessRecord]) -> List[Dict[str, Any]]:
     return rows
 
 
-def _service_to_row(business_id: str, service: ServiceRecord) -> Dict[str, Any]:
+def _service_to_row(business_id: int, service: ServiceRecord) -> Dict[str, Any]:
     return {
         "business_id": business_id,
         "service_id": service.service_id,

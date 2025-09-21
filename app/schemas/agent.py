@@ -1,5 +1,7 @@
 
-from pydantic import BaseModel, model_validator
+from typing import Any, Dict, List, Optional
+
+from pydantic import BaseModel, Field, ConfigDict, model_validator
 
 class AgentRunRequest(BaseModel):
     prompt: str
@@ -19,7 +21,13 @@ class AgentRunRequest(BaseModel):
         return v
 
 class AgentRunResponse(BaseModel):
+    """HTTP response model for agent execution results."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
     output: str
+    tool: Optional[str] = None
+    data_points: List[Dict[str, Any]] = Field(default_factory=list, alias="dataPoints")
 
 class AgentTool(BaseModel):
     name: str

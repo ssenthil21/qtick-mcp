@@ -1,0 +1,94 @@
+import os
+import sys
+
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
+from app.tools.agent import summarize_tool_result
+
+
+def test_summarize_appointment_booking_returns_datapoints() -> None:
+    tool_name, data_points = summarize_tool_result(
+        "appointment_book",
+        {
+            "business_id": 1001,
+            "customer_name": "Alex",
+            "service_id": 101,
+            "datetime": "2025-09-05T17:00:00+08:00",
+        },
+        {
+            "status": "confirmed",
+            "appointment_id": "APT-00003",
+            "queue_number": "B01",
+        },
+    )
+
+    assert tool_name == "Appointment"
+    assert data_points[0]["appointmentId"] == "APT-00003"
+    assert data_points[0]["customer"] == "Alex"
+    assert data_points[0]["queueNumber"] == "B01"
+
+
+def test_summarize_appointment_conflict_includes_suggestions() -> None:
+    _, data_points = summarize_tool_result(
+        "appointment_book",
+        {
+            "business_id": 1001,
+            "customer_name": "Jamie",
+            "service_id": 102,
+            "datetime": "2025-09-05T17:00:00+08:00",
+        },
+        {
+            "status": "conflict",
+            "message": "Requested slot unavailable",
+            "suggested_slots": [
+                "2025-09-05T17:30:00+08:00",
+                "2025-09-05T18:00:00+08:00",
+            ],
+        },
+    )
+
+    payload = data_points[0]
+    assert payload["status"] == "conflict"
+    assert "suggestedSlots" in payload and len(payload["suggestedSlots"]) == 2
+    assert payload["message"] == "Requested slot unavailable"
+
+
+def test_summarize_invoice_creation_contains_items() -> None:
+    tool_name, data_points = summarize_tool_result(
+        "invoice_create",
+        {
+            "business_id": 2001,
+            "customer_name": "Taylor",
+            "items": [
+                {
+                    "description": "Haircut",
+                    "quantity": 1,
+                    "unit_price": 25.0,
+                    "tax_rate": 0.08,
+                },
+                {
+                    "description": "Serum",
+                    "quantity": 2,
+                    "price": 12.5,
+                },
+            ],
+            "currency": "SGD",
+        },
+        {
+            "invoice_id": "INV-00001",
+            "total": 52.0,
+            "currency": "SGD",
+            "status": "created",
+            "payment_link": "https://pay.qtick.co/INV-00001",
+            "created_at": "2025-09-05T12:00:00+08:00",
+        },
+    )
+
+    assert tool_name == "Invoice"
+    payload = data_points[0]
+    assert payload["invoiceId"] == "INV-00001"
+    assert payload["total"] == 52.0
+    assert payload["currency"] == "SGD"
+    assert payload["customer"] == "Taylor"
+    assert len(payload["items"]) == 2
+    assert payload["items"][0]["description"] == "Haircut"

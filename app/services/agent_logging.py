@@ -76,3 +76,34 @@ class AgentLoggingCallbackHandler(BaseCallbackHandler):
     ) -> None:
         logger.exception("Tool error: %s", error)
 
+
+class AgentRunCollector(BaseCallbackHandler):
+    """Capture tool inputs and outputs during an agent run."""
+
+    def __init__(self) -> None:
+        self.tool_name: Optional[str] = None
+        self.tool_input: Any = None
+        self.tool_output: Any = None
+        self.final_output: Optional[str] = None
+
+    def on_agent_action(self, action: AgentAction, **kwargs: Any) -> Any:
+        self.tool_name = action.tool
+        self.tool_input = action.tool_input
+
+    def on_tool_end(
+        self,
+        output: Any,
+        *,
+        run_id: Optional[str] = None,
+        parent_run_id: Optional[str] = None,
+        **kwargs: Any,
+    ) -> None:
+        self.tool_output = output
+
+    def on_agent_finish(self, finish: AgentFinish, **kwargs: Any) -> None:
+        output = finish.return_values.get("output") if finish.return_values else None
+        if isinstance(output, str):
+            self.final_output = output
+        elif output is not None:
+            self.final_output = str(output)
+

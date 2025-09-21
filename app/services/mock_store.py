@@ -3,7 +3,7 @@ from __future__ import annotations
 import itertools
 from collections import defaultdict
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import DefaultDict, Dict, Iterable, List, Optional
 
 from app.schemas.analytics import AnalyticsRequest, AnalyticsResponse
@@ -37,13 +37,15 @@ class BusinessRecord:
     def __init__(
         self,
         *,
-        business_id: str,
+        business_id: int,
+        slug: str,
         name: str,
         location: str,
         tags: Iterable[str],
         services: Iterable["ServiceRecord"],
     ) -> None:
-        self.business_id = business_id
+        self.business_id = int(business_id)
+        self.slug = slug.lower()
         self.name = name
         self.location = location
         self.tags = list(tags)
@@ -69,7 +71,8 @@ class ServiceRecord:
 
 class MasterDataRepository:
     def __init__(self) -> None:
-        self._businesses: Dict[str, BusinessRecord] = {}
+        self._businesses_by_id: Dict[int, BusinessRecord] = {}
+        self._businesses_by_slug: Dict[str, BusinessRecord] = {}
         self._seed_businesses()
 
     def _seed_businesses(self) -> None:
@@ -140,7 +143,8 @@ class MasterDataRepository:
 
         self.add_business(
             BusinessRecord(
-                business_id="chillbreeze",
+                business_id=1001,
+                slug="chillbreeze",
                 name="Chillbreeze Orchard",
                 location="Orchard Road, Singapore",
                 tags=["flagship", "beauty"],
@@ -149,7 +153,8 @@ class MasterDataRepository:
         )
         self.add_business(
             BusinessRecord(
-                business_id="chillbreeze-anna-nagar",
+                business_id=1002,
+                slug="chillbreeze-anna-nagar",
                 name="Chillrezze Anna Nagar",
                 location="Anna Nagar, Chennai",
                 tags=["india", "salon"],
@@ -158,7 +163,8 @@ class MasterDataRepository:
         )
         self.add_business(
             BusinessRecord(
-                business_id="chillbreeze-adayar",
+                business_id=1003,
+                slug="chillbreeze-adayar",
                 name="Chillbreeze Adayar",
                 location="Adyar, Chennai",
                 tags=["india", "spa"],
@@ -167,18 +173,32 @@ class MasterDataRepository:
         )
 
     def add_business(self, record: BusinessRecord) -> None:
-        self._businesses[record.business_id] = record
+        self._businesses_by_id[record.business_id] = record
+        self._businesses_by_slug[record.slug] = record
 
     def iter_businesses(self) -> Iterable[BusinessRecord]:
-        return self._businesses.values()
+        return self._businesses_by_id.values()
 
-    def get_business(self, identifier: str) -> Optional[BusinessRecord]:
-        identifier_lower = identifier.lower()
-        for record in self._businesses.values():
-            if record.business_id.lower() == identifier_lower:
-                return record
+    def get_business(self, identifier: str | int) -> Optional[BusinessRecord]:
+        if isinstance(identifier, int):
+            return self._businesses_by_id.get(identifier)
+
+        identifier_str = str(identifier).strip()
+        if not identifier_str:
+            return None
+
+        if identifier_str.isdigit():
+            return self._businesses_by_id.get(int(identifier_str))
+
+        normalized = identifier_str.lower()
+        if normalized in self._businesses_by_slug:
+            return self._businesses_by_slug[normalized]
+
+        for record in self._businesses_by_id.values():
             name_lower = record.name.lower()
-            if name_lower == identifier_lower or identifier_lower in name_lower:
+            if normalized == name_lower or normalized in name_lower:
+                return record
+            if normalized in record.slug:
                 return record
         return None
 
@@ -186,9 +206,9 @@ class MasterDataRepository:
         normalized = query.lower()
         matches = [
             record
-            for record in self._businesses.values()
+            for record in self._businesses_by_id.values()
             if normalized in record.name.lower()
-            or normalized in record.business_id.lower()
+            or normalized in record.slug
             or any(normalized in tag.lower() for tag in record.tags)
         ]
         matches.sort(key=lambda record: record.name)
@@ -207,12 +227,17 @@ class MasterDataRepository:
         self, business: BusinessRecord, query: str, limit: int
     ) -> List[ServiceSummary]:
         normalized = query.lower()
-        matches = [
-            service
-            for service in business.services
-            if normalized in service.name.lower()
-            or normalized in service.category.lower()
-        ]
+        tokens = [token for token in normalized.split() if token and token not in {"just", "only", "a", "an", "the"}]
+        matches = []
+        for service in business.services:
+            name_lower = service.name.lower()
+            category_lower = service.category.lower()
+            if tokens:
+                if all(token in name_lower or token in category_lower for token in tokens):
+                    matches.append(service)
+                    continue
+            if normalized in name_lower or normalized in category_lower:
+                matches.append(service)
         matches.sort(key=lambda service: service.name)
         return [
             ServiceSummary(
@@ -231,7 +256,7 @@ class AppointmentRepository(_BaseRepository):
         super().__init__("APT")
         self._master_data = master_data
         self._appointments: Dict[str, Dict[str, object]] = {}
-        self._queue_numbers: DefaultDict[str, itertools.count] = defaultdict(
+        self._queue_numbers: DefaultDict[int, itertools.count] = defaultdict(
             lambda: itertools.count(1)
         )
         self._seed_defaults()
@@ -273,11 +298,22 @@ class AppointmentRepository(_BaseRepository):
 
         for business_id in {record["business_id"] for record in self._appointments.values()}:
             existing = sum(
-                1 for item in self._appointments.values() if item["business_id"] == business_id
+                1
+                for item in self._appointments.values()
+                if item["business_id"] == business_id
             )
             self._queue_numbers[business_id] = itertools.count(existing + 1)
 
     async def book(self, request: AppointmentRequest) -> AppointmentResponse:
+        requested_dt = self._parse_datetime(request.datetime)
+        if requested_dt and self._has_conflict(request.business_id, requested_dt):
+            suggestions = self._suggest_alternative_slots(request.business_id, requested_dt)
+            return AppointmentResponse(
+                status="conflict",
+                message="The requested timeslot is unavailable for this business.",
+                suggested_slots=suggestions or None,
+            )
+
         appointment_id = self._next_id()
         queue_number = f"B{next(self._queue_numbers[request.business_id]):02d}"
         record = {
@@ -321,9 +357,61 @@ class AppointmentRepository(_BaseRepository):
             items=page_items,
         )
 
-    async def get(self, appointment_id: str) -> Optional[Dict[str, str]]:
+    async def get(self, appointment_id: str) -> Optional[Dict[str, object]]:
         appointment = self._appointments.get(appointment_id)
         return dict(appointment) if appointment is not None else None
+
+    @staticmethod
+    def _parse_datetime(value: str) -> Optional[datetime]:
+        try:
+            normalized = value.replace("Z", "+00:00")
+            return datetime.fromisoformat(normalized)
+        except ValueError:
+            return None
+
+    @staticmethod
+    def _normalize_dt(dt: datetime) -> datetime:
+        if dt.tzinfo is None:
+            return dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc)
+
+    def _has_conflict(self, business_id: int, candidate: datetime) -> bool:
+        candidate_norm = self._normalize_dt(candidate)
+        for record in self._appointments.values():
+            if record["business_id"] != business_id:
+                continue
+            existing_dt = self._parse_datetime(str(record["datetime"]))
+            if not existing_dt:
+                continue
+            if self._normalize_dt(existing_dt) == candidate_norm:
+                return True
+        return False
+
+    def _suggest_alternative_slots(
+        self, business_id: int, requested_dt: datetime, limit: int = 3
+    ) -> List[str]:
+        offsets = [
+            timedelta(minutes=30),
+            timedelta(minutes=60),
+            timedelta(minutes=-30),
+            timedelta(minutes=90),
+            timedelta(minutes=-60),
+            timedelta(minutes=120),
+        ]
+        suggestions: List[str] = []
+        seen: set[str] = set()
+        for delta in offsets:
+            candidate = requested_dt + delta
+            if self._has_conflict(business_id, candidate):
+                continue
+            iso_value = candidate.isoformat()
+            if iso_value in seen:
+                continue
+            suggestions.append(iso_value)
+            seen.add(iso_value)
+            if len(suggestions) >= limit:
+                break
+        return suggestions
 
 
 class InvoiceRepository(_BaseRepository):
@@ -357,7 +445,7 @@ class InvoiceRepository(_BaseRepository):
         self._invoices[invoice_id] = record
         return InvoiceResponse(**record)
 
-    async def list(self, business_id: Optional[str] = None) -> List[Dict[str, object]]:
+    async def list(self, business_id: Optional[int] = None) -> List[Dict[str, object]]:
         if business_id is None:
             return [dict(invoice) for invoice in self._invoices.values()]
         return [
@@ -398,7 +486,7 @@ class LeadRepository(_BaseRepository):
             follow_up_required=True,
         )
 
-    async def list(self, business_id: Optional[str] = None) -> List[Dict[str, object]]:
+    async def list(self, business_id: Optional[int] = None) -> List[Dict[str, object]]:
         if business_id is None:
             return [dict(lead) for lead in self._leads.values()]
         return [

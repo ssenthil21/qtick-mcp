@@ -6,9 +6,9 @@ openai_tool_schemas = [
         "parameters": {
             "type": "object",
             "properties": {
-                "business_id": {"type": "string"},
+                "business_id": {"type": "integer"},
                 "customer_name": {"type": "string"},
-                "service_id": {"type": "string"},
+                "service_id": {"type": "integer"},
                 "datetime": {"type": "string"}
             },
             "required": ["business_id", "customer_name", "service_id", "datetime"]
@@ -20,7 +20,7 @@ openai_tool_schemas = [
         "parameters": {
             "type": "object",
             "properties": {
-                "business_id": {"type": "string"},
+                "business_id": {"type": "integer"},
                 "date_from": {"type": "string"},
                 "date_to": {"type": "string"},
                 "status": {"type": "string"},
@@ -36,7 +36,7 @@ openai_tool_schemas = [
         "parameters": {
             "type": "object",
             "properties": {
-                "business_id": {"type": "string"},
+                "business_id": {"type": "integer"},
                 "customer_name": {"type": "string"},
                 "items": {
                     "type": "array",
@@ -65,7 +65,7 @@ openai_tool_schemas = [
         "parameters": {
             "type": "object",
             "properties": {
-                "business_id": {"type": "string"},
+                "business_id": {"type": "integer"},
                 "name": {"type": "string"},
                 "phone": {"type": "string"},
                 "email": {"type": "string"},
@@ -96,7 +96,7 @@ openai_tool_schemas = [
         "parameters": {
             "type": "object",
             "properties": {
-                "business_id": {"type": "string"},
+                "business_id": {"type": "integer"},
                 "metrics": {"type": "array", "items": {"type": "string"}},
                 "period": {"type": "string"}
             },

@@ -4,7 +4,7 @@ from typing import List, Optional
 from pydantic import BaseModel, Field
 
 class LeadCreateRequest(BaseModel):
-    business_id: str
+    business_id: int
     name: str
     phone: Optional[str] = None
     email: Optional[str] = None
@@ -30,7 +30,7 @@ class LeadSummary(BaseModel):
 
 
 class LeadListRequest(BaseModel):
-    business_id: str
+    business_id: int
 
 
 class LeadListResponse(BaseModel):

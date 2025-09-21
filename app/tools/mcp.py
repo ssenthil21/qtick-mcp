@@ -33,7 +33,7 @@ TOOLS: List[Dict[str, Any]] = [
             "type": "object",
             "properties": {
                 "service_name": {"type": "string"},
-                "business_id": {"type": "string"},
+                "business_id": {"type": "integer"},
                 "business_name": {"type": "string"},
                 "limit": {"type": "integer", "minimum": 1, "maximum": 20, "default": 5},
             },
@@ -46,7 +46,7 @@ TOOLS: List[Dict[str, Any]] = [
         "inputSchema": {
             "type": "object",
             "properties": {
-                "business_id": {"type":"string"},
+                "business_id": {"type": "integer"},
                 "customer_name": {"type":"string"},
                 "service_id": {"type":"integer"},
                 "datetime": {"type":"string","format":"date-time"}
@@ -60,7 +60,7 @@ TOOLS: List[Dict[str, Any]] = [
         "inputSchema": {
             "type": "object",
             "properties": {
-                "business_id":{"type":"string"},
+                "business_id": {"type": "integer"},
                 "date_from":{"type":"string","format":"date"},
                 "date_to":{"type":"string","format":"date"},
                 "status":{"type":"string","enum":["open","confirmed","completed","cancelled","no_show","pending"]},
@@ -76,7 +76,7 @@ TOOLS: List[Dict[str, Any]] = [
         "inputSchema": {
             "type": "object",
             "properties": {
-                "business_id":{"type":"string"},
+                "business_id": {"type": "integer"},
                 "customer_name":{"type":"string"},
                 "items":{"type":"array","items":{
                     "type":"object",
@@ -103,7 +103,7 @@ TOOLS: List[Dict[str, Any]] = [
         "inputSchema": {
             "type": "object",
             "properties": {
-                "business_id": {"type": "string"},
+                "business_id": {"type": "integer"},
             },
             "required": ["business_id"],
         },
@@ -114,7 +114,7 @@ TOOLS: List[Dict[str, Any]] = [
         "inputSchema": {
             "type": "object",
             "properties": {
-                "business_id":{"type":"string"},
+                "business_id": {"type": "integer"},
                 "name":{"type":"string"},
                 "phone":{"type":"string"},
                 "email":{"type":"string","format":"email"},
@@ -130,7 +130,7 @@ TOOLS: List[Dict[str, Any]] = [
         "inputSchema": {
             "type": "object",
             "properties": {
-                "business_id": {"type": "string"},
+                "business_id": {"type": "integer"},
             },
             "required": ["business_id"],
         },
@@ -156,7 +156,7 @@ TOOLS: List[Dict[str, Any]] = [
         "inputSchema": {
             "type":"object",
             "properties":{
-                "business_id":{"type":"string"},
+                "business_id": {"type": "integer"},
                 "metrics":{"type":"array","items":{"type":"string"}},
                 "period":{"type":"string"}
             },

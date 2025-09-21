@@ -57,14 +57,14 @@ def business_search_tool():
 # ---------- Service Lookup ----------
 class ServiceLookupInput(BaseModel):
     service_name: str = Field(..., description="Service name or keyword")
-    business_id: Optional[str] = None
+    business_id: Optional[int] = None
     business_name: Optional[str] = None
     limit: int = Field(default=5, ge=1, le=20)
 
 
 def _service_lookup(
     service_name: str,
-    business_id: Optional[str] = None,
+    business_id: Optional[int] = None,
     business_name: Optional[str] = None,
     limit: int = 5,
 ):
@@ -94,7 +94,7 @@ def business_service_lookup_tool():
 
 # ---------- Appointment Book ----------
 class BookAppointmentInput(BaseModel):
-    business_id: str
+    business_id: int
     customer_name: str
     service_id: int
     datetime: str
@@ -109,7 +109,7 @@ class BookAppointmentInput(BaseModel):
             ) from exc
         return value
 
-def _book_appointment(business_id: str, customer_name: str, service_id: int, datetime: str):
+def _book_appointment(business_id: int, customer_name: str, service_id: int, datetime: str):
     payload = {"business_id": business_id, "customer_name": customer_name, "service_id": service_id, "datetime": datetime}
     r = requests.post(f"{MCP_BASE}/tools/appointment/book", json=payload, timeout=15)
     r.raise_for_status()
@@ -125,14 +125,14 @@ def appointment_tool():
 
 # ---------- Appointment List ----------
 class AppointmentListInput(BaseModel):
-    business_id: str
+    business_id: int
     date_from: Optional[str] = None
     date_to: Optional[str] = None
     status: Optional[str] = None
     page: int = 1
     page_size: int = 20
 
-def _list_appointments(business_id: str, date_from: Optional[str] = None, date_to: Optional[str] = None, status: Optional[str] = None, page: int = 1, page_size: int = 20):
+def _list_appointments(business_id: int, date_from: Optional[str] = None, date_to: Optional[str] = None, status: Optional[str] = None, page: int = 1, page_size: int = 20):
     payload = {"business_id": business_id, "date_from": date_from, "date_to": date_to, "status": status, "page": page, "page_size": page_size}
     r = requests.post(f"{MCP_BASE}/tools/appointment/list", json=payload, timeout=15)
     r.raise_for_status()
@@ -148,10 +148,10 @@ def appointment_list_tool():
 
 # ---------- Invoice List ----------
 class InvoiceListInput(BaseModel):
-    business_id: str
+    business_id: int
 
 
-def _invoice_list(business_id: str):
+def _invoice_list(business_id: int):
     payload = {"business_id": business_id}
     r = requests.post(f"{MCP_BASE}/tools/invoice/list", json=payload, timeout=15)
     r.raise_for_status()
@@ -185,14 +185,14 @@ class LineItemInput(BaseModel):
         return model
 
 class InvoiceCreateInput(BaseModel):
-    business_id: str
+    business_id: int
     customer_name: str
     items: List[LineItemInput]
     currency: str = "SGD"
     appointment_id: Optional[str] = None
     notes: Optional[str] = None
 
-def _invoice_create(business_id: str, customer_name: str, items: List[LineItemInput], currency: str = "SGD", appointment_id: Optional[str] = None, notes: Optional[str] = None):
+def _invoice_create(business_id: int, customer_name: str, items: List[LineItemInput], currency: str = "SGD", appointment_id: Optional[str] = None, notes: Optional[str] = None):
     norm_items = []
     for i in items:
         norm_items.append({
@@ -217,14 +217,21 @@ def invoice_create_tool():
 
 # ---------- Lead Create ----------
 class LeadCreateInput(BaseModel):
-    business_id: str
+    business_id: int
     name: str
     phone: Optional[str] = None
     email: Optional[str] = None
     source: Optional[str] = "manual"
     notes: Optional[str] = None
 
-def _lead_create(business_id: str, name: str, phone: Optional[str] = None, email: Optional[str] = None, source: Optional[str] = "manual", notes: Optional[str] = None):
+def _lead_create(
+    business_id: int,
+    name: str,
+    phone: Optional[str] = None,
+    email: Optional[str] = None,
+    source: Optional[str] = "manual",
+    notes: Optional[str] = None,
+):
     payload = {"business_id": business_id, "name": name, "phone": phone, "email": email, "source": source, "notes": notes}
     r = requests.post(f"{MCP_BASE}/tools/leads/create", json=payload, timeout=15)
     r.raise_for_status()
@@ -240,10 +247,10 @@ def lead_create_tool():
 
 # ---------- Lead List ----------
 class LeadListInput(BaseModel):
-    business_id: str
+    business_id: int
 
 
-def _lead_list(business_id: str):
+def _lead_list(business_id: int):
     payload = {"business_id": business_id}
     r = requests.post(f"{MCP_BASE}/tools/leads/list", json=payload, timeout=15)
     r.raise_for_status()
@@ -282,11 +289,11 @@ def campaign_tool():
 
 # ---------- Analytics ----------
 class AnalyticsInput(BaseModel):
-    business_id: str
+    business_id: int
     metrics: List[str] = Field(..., description="e.g. ['footfall','revenue']")
     period: str
 
-def _analytics_report(business_id: str, metrics: List[str], period: str):
+def _analytics_report(business_id: int, metrics: List[str], period: str):
     payload = {"business_id": business_id, "metrics": metrics, "period": period}
     r = requests.post(f"{MCP_BASE}/tools/analytics/report", json=payload, timeout=15)
     r.raise_for_status()

@@ -27,7 +27,7 @@ class FakeAgent:
         self.tool = tool
         self.thread_ident = None
 
-    def run(self, prompt: str) -> str:
+    def run(self, prompt: str, callbacks=None) -> str:
         self.thread_ident = threading.get_ident()
         result = self.tool()
         return f"{prompt} -> {result}"
@@ -49,7 +49,10 @@ def test_agent_run_endpoint_uses_background_thread(monkeypatch):
     response = client.post("/agent/run", json={"prompt": "hello"})
 
     assert response.status_code == 200
-    assert response.json() == {"output": "hello -> tool result"}
+    payload = response.json()
+    assert payload["output"] == "hello -> tool result"
+    assert payload["tool"] is None
+    assert payload["dataPoints"] == []
     assert tool.called is True
     assert agent.thread_ident is not None
     assert loop_thread_ident is not None

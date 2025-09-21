@@ -8,10 +8,10 @@ from pydantic import BaseModel, Field, model_validator
 class BusinessSummary(BaseModel):
     """Lightweight projection of a business in the directory."""
 
-    business_id: str
+    business_id: int
     name: str
     location: Optional[str] = None
-    tags: List[str] = []
+    tags: List[str] = Field(default_factory=list)
 
 
 class BusinessSearchRequest(BaseModel):
@@ -35,7 +35,7 @@ class ServiceSummary(BaseModel):
 
 class ServiceLookupRequest(BaseModel):
     service_name: str = Field(..., min_length=1, description="Service name or keyword")
-    business_id: Optional[str] = Field(None, description="Exact business identifier")
+    business_id: Optional[int] = Field(None, description="Exact business identifier")
     business_name: Optional[str] = Field(None, description="Business name fragment when id is unknown")
     limit: int = Field(5, ge=1, le=20, description="Maximum number of services to return")
 
