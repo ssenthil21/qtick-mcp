@@ -90,5 +90,84 @@ def test_summarize_invoice_creation_contains_items() -> None:
     assert payload["total"] == 52.0
     assert payload["currency"] == "SGD"
     assert payload["customer"] == "Taylor"
+    assert payload["businessId"] == 2001
     assert len(payload["items"]) == 2
     assert payload["items"][0]["description"] == "Haircut"
+
+
+def test_summarize_service_lookup_groups_matches() -> None:
+    _, data_points = summarize_tool_result(
+        "business_service_lookup",
+        None,
+        {
+            "query": "Haircut",
+            "business": {
+                "business_id": 1001,
+                "name": "Chillbreeze Orchard",
+                "location": "Orchard Road",
+                "tags": ["flagship"],
+            },
+            "matches": [
+                {
+                    "service_id": 101,
+                    "name": "Signature Haircut",
+                    "category": "grooming",
+                    "duration_minutes": 45,
+                    "price": 38.0,
+                },
+                {
+                    "service_id": 104,
+                    "name": "Kids Haircut",
+                    "category": "grooming",
+                    "duration_minutes": 30,
+                    "price": 25.0,
+                },
+            ],
+            "message": "Multiple services matched your search.",
+        },
+    )
+
+    assert len(data_points) == 1
+    payload = data_points[0]
+    assert payload["query"].lower() == "haircut"
+    assert payload["business"]["businessId"] == 1001
+    assert len(payload["matches"]) == 2
+    assert payload["matches"][0]["serviceId"] == 101
+    assert payload["message"].startswith("Multiple services")
+
+
+def test_summarize_business_search_returns_options() -> None:
+    _, data_points = summarize_tool_result(
+        "business_search",
+        None,
+        {
+            "query": "Chillbreeze",
+            "total": 2,
+            "items": [
+                {
+                    "business_id": 1001,
+                    "name": "Chillbreeze Orchard",
+                    "location": "Orchard Road",
+                    "tags": ["flagship"],
+                },
+                {
+                    "business_id": 1003,
+                    "name": "Chillbreeze Adayar",
+                    "location": "Adyar",
+                    "tags": ["india"],
+                },
+            ],
+            "message": "Multiple businesses match your search.",
+        },
+    )
+
+    assert len(data_points) == 4
+    summary = data_points[0]
+    assert summary["query"].lower() == "chillbreeze"
+    assert summary["total"] == 2
+
+    options = data_points[1:3]
+    assert {item["businessId"] for item in options} == {1001, 1003}
+
+    message = data_points[3]
+    assert message["message"].startswith("Multiple businesses match")

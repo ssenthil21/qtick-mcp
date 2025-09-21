@@ -171,6 +171,9 @@ def _summarize_invoice_create(
         "createdAt": output.get("created_at"),
         "paymentLink": output.get("payment_link"),
     }
+    business_id = output.get("business_id")
+    if business_id is not None:
+        base["businessId"] = business_id
     if tool_input:
         items_payload: List[Dict[str, Any]] = []
         for item in tool_input.get("items", []) or []:
@@ -257,53 +260,82 @@ def _summarize_business_search(output: Dict[str, Any]) -> List[Dict[str, Any]]:
     summary = _strip_nones({"query": output.get("query"), "total": output.get("total")})
     if summary:
         items.append(summary)
-    for item in output.get("items", []) or []:
-        if isinstance(item, dict):
-            items.append(
-                _strip_nones(
-                    {
-                        "businessId": item.get("business_id"),
-                        "name": item.get("name"),
-                        "location": item.get("location"),
-                        "tags": item.get("tags"),
-                    }
-                )
-            )
-    return items
 
-
-def _summarize_service_lookup(output: Dict[str, Any]) -> List[Dict[str, Any]]:
-    items: List[Dict[str, Any]] = []
-    business = output.get("business")
-    if isinstance(business, dict):
-        items.append(
-            _strip_nones(
+    for business in output.get("items", []) or []:
+        if isinstance(business, dict):
+            payload = _strip_nones(
                 {
                     "businessId": business.get("business_id"),
-                    "businessName": business.get("name"),
+                    "name": business.get("name"),
                     "location": business.get("location"),
                     "tags": business.get("tags"),
                 }
             )
-        )
-    matches = output.get("matches") or []
-    for match in matches:
-        if isinstance(match, dict):
-            items.append(
-                _strip_nones(
-                    {
-                        "serviceId": match.get("service_id"),
-                        "name": match.get("name"),
-                        "category": match.get("category"),
-                        "durationMinutes": match.get("duration_minutes"),
-                        "price": match.get("price"),
-                    }
-                )
-            )
+            if payload:
+                items.append(payload)
+
     message = output.get("message")
     if message:
         items.append({"message": message})
+
     return items
+
+
+def _summarize_service_lookup(output: Dict[str, Any]) -> List[Dict[str, Any]]:
+    business_payload: Optional[Dict[str, Any]] = None
+    business = output.get("business")
+    if isinstance(business, dict):
+        business_payload = _strip_nones(
+            {
+                "businessId": business.get("business_id"),
+                "name": business.get("name"),
+                "location": business.get("location"),
+                "tags": business.get("tags"),
+            }
+        )
+
+    matches_payload: List[Dict[str, Any]] = []
+    for match in output.get("matches") or []:
+        if isinstance(match, dict):
+            match_payload = _strip_nones(
+                {
+                    "serviceId": match.get("service_id"),
+                    "name": match.get("name"),
+                    "category": match.get("category"),
+                    "durationMinutes": match.get("duration_minutes"),
+                    "price": match.get("price"),
+                }
+            )
+            if match_payload:
+                matches_payload.append(match_payload)
+
+    exact_match_payload: Optional[Dict[str, Any]] = None
+    exact_match = output.get("exact_match")
+    if isinstance(exact_match, dict):
+        exact_match_payload = _strip_nones(
+            {
+                "serviceId": exact_match.get("service_id"),
+                "name": exact_match.get("name"),
+                "category": exact_match.get("category"),
+                "durationMinutes": exact_match.get("duration_minutes"),
+                "price": exact_match.get("price"),
+            }
+        )
+
+    summary = _strip_nones(
+        {
+            "query": output.get("query"),
+            "business": business_payload,
+            "matches": matches_payload or None,
+            "exactMatch": exact_match_payload,
+            "message": output.get("message"),
+        }
+    )
+
+    if matches_payload:
+        summary["matches"] = matches_payload
+
+    return [summary] if summary else []
 
 
 def _summarize_campaign(output: Dict[str, Any], tool_input: Optional[Dict[str, Any]]) -> Dict[str, Any]:
