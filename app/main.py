@@ -8,6 +8,7 @@ from app.config import get_settings
 from app.dependencies.services import get_java_client_cached
 
 # Import routers directly from submodules (safer under reload)
+from app.mock_data_view import router as mock_data_router
 from app.tools.analytics import router as analytics_router
 from app.tools.agent import router as agent_router
 from app.tools.appointment import router as appointment_router
@@ -16,7 +17,6 @@ from app.tools.campaign import router as campaign_router
 from app.tools.invoice import router as invoice_router
 from app.tools.leads import router as leads_router
 from app.tools.mcp import router as mcp_router
-from app.tools.agent import router as agent_router
 from app.mcp_server import mcp
 from starlette.routing import Mount
 from app.health import router as health_router 
@@ -52,7 +52,8 @@ app.include_router(invoice_router, prefix="/tools/invoice")
 app.include_router(leads_router, prefix="/tools/leads")
 app.include_router(agent_router, prefix="/agent")
 app.include_router(mcp_router)  # Exposes /tools/list and /tools/call
-app.include_router(health_router)    
+app.include_router(health_router)
+app.include_router(mock_data_router)
 app.mount("/mcp", mcp.streamable_http_app()) # Mount the MCP Streamable HTTP server at /mcp
 #app.mount("/sse", mcp.sse_app()) # add this line for local testing with the Anthropic MCP client:
 
