@@ -72,6 +72,7 @@ class BusinessDirectoryService:
 
             message: str | None = None
             normalized_query = request.service_name.strip().lower()
+            normalized_compact = normalized_query.replace(" ", "").replace("-", "")
             if not matches:
                 message = "No matching services were found. Try a different keyword."
             elif len(matches) > 1 and not exact:
@@ -83,7 +84,12 @@ class BusinessDirectoryService:
                     "Multiple services found including an exact name match; confirm the intended service."
                 )
 
-            if "haircut" in normalized_query and business_record.services:
+            hair_tokens = normalized_query.replace("-", " ").split()
+            is_haircut_query = "haircut" in normalized_compact or (
+                "hair" in hair_tokens and "cut" in hair_tokens
+            )
+
+            if is_haircut_query and business_record.services:
                 haircut_names = [
                     service.name
                     for service in business_record.services
@@ -91,7 +97,7 @@ class BusinessDirectoryService:
                 ]
                 if haircut_names:
                     hair_msg = (
-                        "Available haircut services: "
+                        "Please specify which haircut service you need. Available haircut services: "
                         + ", ".join(sorted(haircut_names))
                     )
                     message = f"{message} {hair_msg}".strip() if message else hair_msg

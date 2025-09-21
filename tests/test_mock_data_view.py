@@ -78,3 +78,41 @@ def test_mock_data_view_displays_invoices() -> None:
     body = response.text
     assert invoice.invoice_id in body
     assert f"{invoice.total:.2f}" in body
+
+
+def test_delete_mock_data_record_removes_entry() -> None:
+    reset_mock_store()
+    store = get_mock_store()
+
+    lead_response = asyncio.run(
+        store.leads.create(
+            LeadCreateRequest(
+                business_id=1001,
+                name="Delete Me",
+                phone="555-0000",
+                email="delete@example.com",
+                source="test",
+            )
+        )
+    )
+
+    client = TestClient(app)
+    delete_response = client.delete(f"/mock-data/leads/{lead_response.lead_id}")
+
+    assert delete_response.status_code == 200
+    payload = delete_response.json()
+    assert payload["status"] == "deleted"
+    assert payload["record_id"] == lead_response.lead_id
+
+    remaining = asyncio.run(store.leads.get(lead_response.lead_id))
+    assert remaining is None
+
+
+def test_delete_mock_data_unknown_collection_returns_404() -> None:
+    reset_mock_store()
+    client = TestClient(app)
+
+    response = client.delete("/mock-data/unknown/123")
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Unsupported mock data collection"
