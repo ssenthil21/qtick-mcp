@@ -5,7 +5,7 @@ import html
 import json
 from typing import Any, Dict, Iterable, List, Mapping
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 from fastapi.responses import HTMLResponse
 
 from app.services.mock_store import BusinessRecord, ServiceRecord, get_mock_store
@@ -126,3 +126,33 @@ async def view_mock_data() -> HTMLResponse:
     """
 
     return HTMLResponse(content=html_content)
+
+
+@router.delete("/mock-data/{collection}/{record_id}")
+async def delete_mock_record(collection: str, record_id: str) -> Dict[str, str]:
+    """Remove a record from one of the mock data repositories."""
+
+    store = get_mock_store()
+    normalized = collection.strip().lower()
+
+    collection_map = {
+        "appointment": ("appointments", store.appointments.delete),
+        "appointments": ("appointments", store.appointments.delete),
+        "invoice": ("invoices", store.invoices.delete),
+        "invoices": ("invoices", store.invoices.delete),
+        "lead": ("leads", store.leads.delete),
+        "leads": ("leads", store.leads.delete),
+        "campaign": ("campaigns", store.campaigns.delete),
+        "campaigns": ("campaigns", store.campaigns.delete),
+    }
+
+    mapping = collection_map.get(normalized)
+    if not mapping:
+        raise HTTPException(status_code=404, detail="Unsupported mock data collection")
+
+    canonical_name, delete_fn = mapping
+    deleted = await delete_fn(record_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Record not found")
+
+    return {"status": "deleted", "collection": canonical_name, "record_id": record_id}

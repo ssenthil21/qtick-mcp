@@ -155,7 +155,7 @@ class MasterDataRepository:
             BusinessRecord(
                 business_id=1002,
                 slug="chillbreeze-anna-nagar",
-                name="Chillrezze Anna Nagar",
+                name="Chillbrezze Anna Nagar",
                 location="Anna Nagar, Chennai",
                 tags=["india", "salon"],
                 services=anna_nagar_services,
@@ -361,6 +361,9 @@ class AppointmentRepository(_BaseRepository):
         appointment = self._appointments.get(appointment_id)
         return dict(appointment) if appointment is not None else None
 
+    async def delete(self, appointment_id: str) -> bool:
+        return self._appointments.pop(appointment_id, None) is not None
+
     @staticmethod
     def _parse_datetime(value: str) -> Optional[datetime]:
         try:
@@ -458,6 +461,9 @@ class InvoiceRepository(_BaseRepository):
         invoice = self._invoices.get(invoice_id)
         return dict(invoice) if invoice is not None else None
 
+    async def delete(self, invoice_id: str) -> bool:
+        return self._invoices.pop(invoice_id, None) is not None
+
 
 class LeadRepository(_BaseRepository):
     def __init__(self) -> None:
@@ -499,6 +505,9 @@ class LeadRepository(_BaseRepository):
         lead = self._leads.get(lead_id)
         return dict(lead) if lead is not None else None
 
+    async def delete(self, lead_id: str) -> bool:
+        return self._leads.pop(lead_id, None) is not None
+
 
 class CampaignRepository(_BaseRepository):
     def __init__(self) -> None:
@@ -527,6 +536,9 @@ class CampaignRepository(_BaseRepository):
     async def get(self, campaign_id: str) -> Optional[Dict[str, object]]:
         campaign = self._campaigns.get(campaign_id)
         return dict(campaign) if campaign is not None else None
+
+    async def delete(self, campaign_id: str) -> bool:
+        return self._campaigns.pop(campaign_id, None) is not None
 
 
 class AnalyticsRepository:

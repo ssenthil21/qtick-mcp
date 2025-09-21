@@ -264,7 +264,7 @@ def test_business_directory_search_and_lookup() -> None:
 
     assert search_response.total >= 3
     names = {item.name for item in search_response.items}
-    assert "Chillrezze Anna Nagar" in names
+    assert "Chillbrezze Anna Nagar" in names
     assert "Chillbreeze Adayar" in names
 
     lookup_request = ServiceLookupRequest(
@@ -275,8 +275,25 @@ def test_business_directory_search_and_lookup() -> None:
 
     assert lookup_response.matches
     assert lookup_response.message is not None
+    assert "Please specify which haircut service" in lookup_response.message
     assert "Available haircut services" in lookup_response.message
     assert lookup_response.business.business_id == SEED_CHILLBREEZE_ID
+
+
+def test_haircut_lookup_with_space_prompts_for_specific_service() -> None:
+    client = MockLatencyClient()
+    service = BusinessDirectoryService(client)
+
+    lookup_request = ServiceLookupRequest(
+        business_name="Chillbreeze",
+        service_name="hair cut",
+    )
+    lookup_response = asyncio.run(service.lookup_service(lookup_request))
+
+    assert lookup_response.matches
+    assert lookup_response.message is not None
+    assert "Please specify which haircut service" in lookup_response.message
+    assert "Signature Haircut" in lookup_response.message
 
 
 def test_lead_create_prompts_follow_up_and_list() -> None:
