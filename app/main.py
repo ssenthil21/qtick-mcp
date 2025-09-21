@@ -11,6 +11,7 @@ from app.dependencies.services import get_java_client_cached
 from app.tools.analytics import router as analytics_router
 from app.tools.agent import router as agent_router
 from app.tools.appointment import router as appointment_router
+from app.tools.business import router as business_router
 from app.tools.campaign import router as campaign_router
 from app.tools.invoice import router as invoice_router
 from app.tools.leads import router as leads_router
@@ -44,6 +45,7 @@ app.add_middleware(
 )
 
 app.include_router(appointment_router, prefix="/tools/appointment")
+app.include_router(business_router, prefix="/tools/business")
 app.include_router(campaign_router, prefix="/tools/campaign")
 app.include_router(analytics_router, prefix="/tools/analytics")
 app.include_router(invoice_router, prefix="/tools/invoice")

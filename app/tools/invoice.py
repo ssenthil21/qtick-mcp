@@ -2,7 +2,12 @@
 from fastapi import APIRouter, Depends, HTTPException
 
 from app.dependencies.services import get_invoice_service
-from app.schemas.billing import InvoiceRequest, InvoiceResponse
+from app.schemas.billing import (
+    InvoiceListRequest,
+    InvoiceListResponse,
+    InvoiceRequest,
+    InvoiceResponse,
+)
 from app.services import InvoiceService
 from app.services.exceptions import ServiceError
 
@@ -15,5 +20,16 @@ async def create_invoice(
 ):
     try:
         return await service.create(req)
+    except ServiceError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@router.post("/list", response_model=InvoiceListResponse)
+async def list_invoices(
+    req: InvoiceListRequest,
+    service: InvoiceService = Depends(get_invoice_service),
+):
+    try:
+        return await service.list(req)
     except ServiceError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc

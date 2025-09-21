@@ -9,11 +9,13 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from app.schemas.analytics import AnalyticsRequest
 from app.schemas.appointment import AppointmentListRequest, AppointmentRequest
-from app.schemas.billing import InvoiceRequest, LineItem
+from app.schemas.billing import InvoiceListRequest, InvoiceRequest, LineItem
 from app.schemas.campaign import CampaignRequest
-from app.schemas.lead import LeadCreateRequest
+from app.schemas.business import BusinessSearchRequest, ServiceLookupRequest
+from app.schemas.lead import LeadCreateRequest, LeadListRequest
 from app.services.analytics import AnalyticsService
 from app.services.appointment import AppointmentService
+from app.services.business import BusinessDirectoryService
 from app.services.campaign import CampaignService
 from app.services.invoice import InvoiceService
 from app.services.leads import LeadService
@@ -45,13 +47,13 @@ def test_mock_appointment_service_persists_records() -> None:
     first_request = AppointmentRequest(
         business_id="biz-123",
         customer_name="Jamie",
-        service_id="svc-haircut",
+        service_id=101,
         datetime="2025-09-06T17:00:00+08:00",
     )
     second_request = AppointmentRequest(
         business_id="biz-123",
         customer_name="Alex",
-        service_id="svc-facial",
+        service_id=202,
         datetime="2025-09-06T18:30:00+08:00",
     )
 
@@ -91,7 +93,7 @@ def test_mock_invoice_and_analytics_use_shared_store() -> None:
             AppointmentRequest(
                 business_id=business_id,
                 customer_name="Taylor",
-                service_id="svc-cut",
+                service_id=401,
                 datetime="2025-09-07T11:00:00+08:00",
             )
         )
@@ -101,7 +103,7 @@ def test_mock_invoice_and_analytics_use_shared_store() -> None:
             AppointmentRequest(
                 business_id=business_id,
                 customer_name="Jordan",
-                service_id="svc-spa",
+                service_id=402,
                 datetime="2025-09-07T12:30:00+08:00",
             )
         )
@@ -144,6 +146,8 @@ def test_lead_repository_stores_created_leads() -> None:
     response = asyncio.run(service.create(request))
 
     assert response.lead_id.startswith("LEAD-")
+    assert response.follow_up_required is True
+    assert "follow-up" in response.next_action.lower()
 
     store = get_mock_store()
     stored = asyncio.run(store.leads.get(response.lead_id))
@@ -183,7 +187,7 @@ def test_appointment_service_book_real_mode_invokes_client_post() -> None:
     request = AppointmentRequest(
         business_id="biz-999",
         customer_name="Alex",
-        service_id="svc-cut",
+        service_id=501,
         datetime="2025-09-06T17:00:00+08:00",
     )
 
@@ -208,6 +212,79 @@ def test_appointment_service_book_real_mode_invokes_client_post() -> None:
     client.post.assert_awaited_once_with("/appointments/book", request.model_dump())
     assert response.appointment_id == "APT-1"
     assert response.queue_number == "A1"
+
+
+def test_seeded_chillbreeze_appointments_available() -> None:
+    client = MockLatencyClient()
+    service = AppointmentService(client)
+
+    list_request = AppointmentListRequest(business_id="chillbreeze", page=1, page_size=10)
+    response = asyncio.run(service.list(list_request))
+
+    assert response.total >= 2
+    assert all(isinstance(item.service_id, int) for item in response.items)
+
+
+def test_business_directory_search_and_lookup() -> None:
+    client = MockLatencyClient()
+    service = BusinessDirectoryService(client)
+
+    search_request = BusinessSearchRequest(query="chillbreeze", limit=5)
+    search_response = asyncio.run(service.search(search_request))
+
+    assert search_response.total >= 3
+    names = {item.name for item in search_response.items}
+    assert "Chillrezze Anna Nagar" in names
+    assert "Chillbreeze Adayar" in names
+
+    lookup_request = ServiceLookupRequest(
+        business_name="Chillbreeze",
+        service_name="haircut",
+    )
+    lookup_response = asyncio.run(service.lookup_service(lookup_request))
+
+    assert lookup_response.matches
+    assert lookup_response.message is not None
+
+
+def test_lead_create_prompts_follow_up_and_list() -> None:
+    client = MockLatencyClient()
+    service = LeadService(client)
+
+    request = LeadCreateRequest(
+        business_id="chillbreeze",
+        name="Priya",
+        phone="1234",
+        email="priya@example.com",
+    )
+    response = asyncio.run(service.create(request))
+
+    assert response.follow_up_required is True
+    assert "follow-up" in response.next_action.lower()
+
+    list_request = LeadListRequest(business_id="chillbreeze")
+    list_response = asyncio.run(service.list(list_request))
+
+    assert list_response.total >= 1
+    assert any(item.lead_id == response.lead_id for item in list_response.items)
+
+
+def test_invoice_list_returns_created_records() -> None:
+    client = MockLatencyClient()
+    service = InvoiceService(client)
+
+    create_request = InvoiceRequest(
+        business_id="chillbreeze",
+        customer_name="Alex",
+        items=[LineItem(description="Haircut", quantity=1, unit_price=30.0)],
+    )
+    created = asyncio.run(service.create(create_request))
+
+    list_request = InvoiceListRequest(business_id="chillbreeze")
+    list_response = asyncio.run(service.list(list_request))
+
+    assert list_response.total >= 1
+    assert any(item.invoice_id == created.invoice_id for item in list_response.items)
 
 
 def test_invoice_service_real_mode_invokes_client_post() -> None:
