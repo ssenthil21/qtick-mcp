@@ -1,9 +1,12 @@
 
 import os
-from datetime import datetime
+import re
+from datetime import datetime, timedelta
 from typing import List, Optional
 
+import dateparser
 import requests
+from zoneinfo import ZoneInfo
 from langchain.tools import StructuredTool
 from pydantic import BaseModel, Field, field_validator, model_validator
 
@@ -57,12 +60,6 @@ class ServiceLookupInput(BaseModel):
     business_id: Optional[str] = None
     business_name: Optional[str] = None
     limit: int = Field(default=5, ge=1, le=20)
-
-    @model_validator(mode="after")
-    def ensure_business_selector(cls, model: "ServiceLookupInput") -> "ServiceLookupInput":
-        if not model.business_id and not model.business_name:
-            raise ValueError("Either business_id or business_name must be provided")
-        return model
 
 
 def _service_lookup(
