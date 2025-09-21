@@ -1,6 +1,7 @@
 
-from pydantic import BaseModel
 from typing import List, Optional
+
+from pydantic import BaseModel
 
 class LineItem(BaseModel):
     item_id: Optional[str] = None
@@ -25,3 +26,20 @@ class InvoiceResponse(BaseModel):
     created_at: str
     payment_link: Optional[str] = None
     status: str
+
+
+class InvoiceSummary(BaseModel):
+    invoice_id: str
+    total: float
+    currency: str
+    created_at: str
+    status: str
+
+
+class InvoiceListRequest(BaseModel):
+    business_id: str
+
+
+class InvoiceListResponse(BaseModel):
+    total: int
+    items: List[InvoiceSummary]

@@ -15,13 +15,17 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 
 from langchain_tools.qtick import (
     analytics_tool,
+    business_search_tool,
+    business_service_lookup_tool,
     appointment_list_tool,
     appointment_tool,
     campaign_tool,
     configure,
     datetime_tool,
     invoice_create_tool,
+    invoice_list_tool,
     lead_create_tool,
+    lead_list_tool,
 )
 
 router = APIRouter()
@@ -34,10 +38,14 @@ def _cache_key(settings: Settings) -> Tuple[str, str, float]:
 def _build_tools() -> List:
     return [
         datetime_tool(),
+        business_search_tool(),
+        business_service_lookup_tool(),
         appointment_tool(),
         appointment_list_tool(),
+        invoice_list_tool(),
         invoice_create_tool(),
         lead_create_tool(),
+        lead_list_tool(),
         campaign_tool(),
         analytics_tool(),
     ]

@@ -4,7 +4,7 @@ import itertools
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import DefaultDict, Dict, List, Optional
+from typing import DefaultDict, Dict, Iterable, List, Optional
 
 from app.schemas.analytics import AnalyticsRequest, AnalyticsResponse
 from app.schemas.appointment import (
@@ -16,6 +16,7 @@ from app.schemas.appointment import (
 )
 from app.schemas.billing import InvoiceRequest, InvoiceResponse
 from app.schemas.campaign import CampaignRequest, CampaignResponse
+from app.schemas.business import BusinessSearchResponse, BusinessSummary, ServiceSummary
 from app.schemas.lead import LeadCreateRequest, LeadCreateResponse
 
 
@@ -32,13 +33,249 @@ class _BaseRepository:
         return f"{self._prefix}-{next(self._counter):05d}"
 
 
-class AppointmentRepository(_BaseRepository):
+class BusinessRecord:
+    def __init__(
+        self,
+        *,
+        business_id: str,
+        name: str,
+        location: str,
+        tags: Iterable[str],
+        services: Iterable["ServiceRecord"],
+    ) -> None:
+        self.business_id = business_id
+        self.name = name
+        self.location = location
+        self.tags = list(tags)
+        self.services = list(services)
+
+
+class ServiceRecord:
+    def __init__(
+        self,
+        *,
+        service_id: int,
+        name: str,
+        category: str,
+        duration_minutes: int,
+        price: float,
+    ) -> None:
+        self.service_id = int(service_id)
+        self.name = name
+        self.category = category
+        self.duration_minutes = duration_minutes
+        self.price = price
+
+
+class MasterDataRepository:
     def __init__(self) -> None:
+        self._businesses: Dict[str, BusinessRecord] = {}
+        self._seed_businesses()
+
+    def _seed_businesses(self) -> None:
+        chillbreeze_services = [
+            ServiceRecord(
+                service_id=101,
+                name="Signature Haircut",
+                category="grooming",
+                duration_minutes=45,
+                price=38.0,
+            ),
+            ServiceRecord(
+                service_id=102,
+                name="Classic Facial",
+                category="spa",
+                duration_minutes=60,
+                price=68.0,
+            ),
+            ServiceRecord(
+                service_id=103,
+                name="Aromatherapy Massage",
+                category="spa",
+                duration_minutes=75,
+                price=96.0,
+            ),
+            ServiceRecord(
+                service_id=104,
+                name="Kids Haircut",
+                category="grooming",
+                duration_minutes=30,
+                price=25.0,
+            ),
+        ]
+
+        anna_nagar_services = [
+            ServiceRecord(
+                service_id=201,
+                name="Chillrezze Blowout",
+                category="styling",
+                duration_minutes=50,
+                price=54.0,
+            ),
+            ServiceRecord(
+                service_id=202,
+                name="Festive Mehndi",
+                category="beauty",
+                duration_minutes=90,
+                price=72.0,
+            ),
+        ]
+
+        adayar_services = [
+            ServiceRecord(
+                service_id=301,
+                name="Beach Breeze Haircut",
+                category="grooming",
+                duration_minutes=40,
+                price=36.0,
+            ),
+            ServiceRecord(
+                service_id=302,
+                name="Soothing Head Massage",
+                category="spa",
+                duration_minutes=45,
+                price=42.0,
+            ),
+        ]
+
+        self.add_business(
+            BusinessRecord(
+                business_id="chillbreeze",
+                name="Chillbreeze Orchard",
+                location="Orchard Road, Singapore",
+                tags=["flagship", "beauty"],
+                services=chillbreeze_services,
+            )
+        )
+        self.add_business(
+            BusinessRecord(
+                business_id="chillbreeze-anna-nagar",
+                name="Chillrezze Anna Nagar",
+                location="Anna Nagar, Chennai",
+                tags=["india", "salon"],
+                services=anna_nagar_services,
+            )
+        )
+        self.add_business(
+            BusinessRecord(
+                business_id="chillbreeze-adayar",
+                name="Chillbreeze Adayar",
+                location="Adyar, Chennai",
+                tags=["india", "spa"],
+                services=adayar_services,
+            )
+        )
+
+    def add_business(self, record: BusinessRecord) -> None:
+        self._businesses[record.business_id] = record
+
+    def iter_businesses(self) -> Iterable[BusinessRecord]:
+        return self._businesses.values()
+
+    def get_business(self, identifier: str) -> Optional[BusinessRecord]:
+        identifier_lower = identifier.lower()
+        for record in self._businesses.values():
+            if record.business_id.lower() == identifier_lower:
+                return record
+            name_lower = record.name.lower()
+            if name_lower == identifier_lower or identifier_lower in name_lower:
+                return record
+        return None
+
+    def search_businesses(self, query: str, limit: int) -> BusinessSearchResponse:
+        normalized = query.lower()
+        matches = [
+            record
+            for record in self._businesses.values()
+            if normalized in record.name.lower()
+            or normalized in record.business_id.lower()
+            or any(normalized in tag.lower() for tag in record.tags)
+        ]
+        matches.sort(key=lambda record: record.name)
+        items = [
+            BusinessSummary(
+                business_id=record.business_id,
+                name=record.name,
+                location=record.location,
+                tags=list(record.tags),
+            )
+            for record in matches[:limit]
+        ]
+        return BusinessSearchResponse(query=query, total=len(matches), items=items)
+
+    def find_services(
+        self, business: BusinessRecord, query: str, limit: int
+    ) -> List[ServiceSummary]:
+        normalized = query.lower()
+        matches = [
+            service
+            for service in business.services
+            if normalized in service.name.lower()
+            or normalized in service.category.lower()
+        ]
+        matches.sort(key=lambda service: service.name)
+        return [
+            ServiceSummary(
+                service_id=service.service_id,
+                name=service.name,
+                category=service.category,
+                duration_minutes=service.duration_minutes,
+                price=service.price,
+            )
+            for service in matches[:limit]
+        ]
+
+
+class AppointmentRepository(_BaseRepository):
+    def __init__(self, master_data: MasterDataRepository | None = None) -> None:
         super().__init__("APT")
-        self._appointments: Dict[str, Dict[str, str]] = {}
+        self._master_data = master_data
+        self._appointments: Dict[str, Dict[str, object]] = {}
         self._queue_numbers: DefaultDict[str, itertools.count] = defaultdict(
             lambda: itertools.count(1)
         )
+        self._seed_defaults()
+
+    def _seed_defaults(self) -> None:
+        if not self._master_data:
+            return
+
+        chillbreeze = self._master_data.get_business("chillbreeze")
+        if not chillbreeze:
+            return
+
+        seeds = [
+            {
+                "business_id": chillbreeze.business_id,
+                "customer_name": "Alex Tan",
+                "service_id": 101,
+                "datetime": "2025-09-05T17:00:00+08:00",
+                "status": "confirmed",
+            },
+            {
+                "business_id": chillbreeze.business_id,
+                "customer_name": "Jamie Lee",
+                "service_id": 102,
+                "datetime": "2025-09-06T11:30:00+08:00",
+                "status": "confirmed",
+            },
+        ]
+
+        for record in seeds:
+            appointment_id = self._next_id()
+            queue_number = f"B{next(self._queue_numbers[record['business_id']]):02d}"
+            record["appointment_id"] = appointment_id
+            record["queue_number"] = queue_number
+            self._appointments[appointment_id] = dict(record)
+
+        next_id = len(self._appointments) + 1
+        self._counter = itertools.count(next_id)
+
+        for business_id in {record["business_id"] for record in self._appointments.values()}:
+            existing = sum(
+                1 for item in self._appointments.values() if item["business_id"] == business_id
+            )
+            self._queue_numbers[business_id] = itertools.count(existing + 1)
 
     async def book(self, request: AppointmentRequest) -> AppointmentResponse:
         appointment_id = self._next_id()
@@ -64,7 +301,7 @@ class AppointmentRepository(_BaseRepository):
             AppointmentSummary(
                 appointment_id=record["appointment_id"],
                 customer_name=record["customer_name"],
-                service_id=record["service_id"],
+                service_id=int(record["service_id"]),
                 datetime=record["datetime"],
                 status=record["status"],
                 queue_number=record["queue_number"],
@@ -157,6 +394,8 @@ class LeadRepository(_BaseRepository):
             lead_id=lead_id,
             status="new",
             created_at=record["created_at"],
+            next_action="Schedule a follow-up call or message with this lead within 24 hours.",
+            follow_up_required=True,
         )
 
     async def list(self, business_id: Optional[str] = None) -> List[Dict[str, object]]:
@@ -234,6 +473,7 @@ class AnalyticsRepository:
 
 @dataclass
 class MockDataStore:
+    master_data: MasterDataRepository
     appointments: AppointmentRepository
     invoices: InvoiceRepository
     leads: LeadRepository
@@ -247,12 +487,14 @@ _mock_store: Optional[MockDataStore] = None
 def get_mock_store() -> MockDataStore:
     global _mock_store
     if _mock_store is None:
-        appointments = AppointmentRepository()
+        master_data = MasterDataRepository()
+        appointments = AppointmentRepository(master_data)
         invoices = InvoiceRepository()
         leads = LeadRepository()
         campaigns = CampaignRepository()
         analytics = AnalyticsRepository(appointments, invoices)
         _mock_store = MockDataStore(
+            master_data=master_data,
             appointments=appointments,
             invoices=invoices,
             leads=leads,

@@ -5,7 +5,7 @@ from typing import List, Optional
 class AppointmentRequest(BaseModel):
     business_id: str
     customer_name: str
-    service_id: str
+    service_id: int
     datetime: str
 
 class AppointmentResponse(BaseModel):
@@ -24,7 +24,7 @@ class AppointmentListRequest(BaseModel):
 class AppointmentSummary(BaseModel):
     appointment_id: str
     customer_name: str
-    service_id: str
+    service_id: int
     datetime: str
     status: str
     queue_number: Optional[str] = None

@@ -9,6 +9,7 @@ from app.config import Settings, get_settings
 from app.services import (
     AnalyticsService,
     AppointmentService,
+    BusinessDirectoryService,
     CampaignService,
     InvoiceService,
     LeadService,
@@ -57,3 +58,9 @@ def get_analytics_service(
     client: JavaServiceClient = Depends(get_java_client),
 ) -> AnalyticsService:
     return AnalyticsService(client)
+
+
+def get_business_directory_service(
+    client: JavaServiceClient = Depends(get_java_client),
+) -> BusinessDirectoryService:
+    return BusinessDirectoryService(client)

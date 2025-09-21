@@ -15,6 +15,32 @@ def require_api_key(x_api_key: Optional[str] = Header(None)):
 
 TOOLS: List[Dict[str, Any]] = [
     {
+        "name": "business.search",
+        "description": "Search for businesses by name, id, or tag.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string"},
+                "limit": {"type": "integer", "minimum": 1, "maximum": 25, "default": 10},
+            },
+            "required": ["query"],
+        },
+    },
+    {
+        "name": "business.services.find",
+        "description": "Find service identifiers for a business using name keywords.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "service_name": {"type": "string"},
+                "business_id": {"type": "string"},
+                "business_name": {"type": "string"},
+                "limit": {"type": "integer", "minimum": 1, "maximum": 20, "default": 5},
+            },
+            "required": ["service_name"],
+        },
+    },
+    {
         "name": "appointments.book",
         "description": "Book an appointment in QTick.",
         "inputSchema": {
@@ -22,7 +48,7 @@ TOOLS: List[Dict[str, Any]] = [
             "properties": {
                 "business_id": {"type":"string"},
                 "customer_name": {"type":"string"},
-                "service_id": {"type":"string"},
+                "service_id": {"type":"integer"},
                 "datetime": {"type":"string","format":"date-time"}
             },
             "required": ["business_id","customer_name","service_id","datetime"]
@@ -72,6 +98,17 @@ TOOLS: List[Dict[str, Any]] = [
         },
     },
     {
+        "name": "invoice.list",
+        "description": "List invoices for a business.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "business_id": {"type": "string"},
+            },
+            "required": ["business_id"],
+        },
+    },
+    {
         "name": "leads.create",
         "description": "Create a new customer lead.",
         "inputSchema": {
@@ -85,6 +122,17 @@ TOOLS: List[Dict[str, Any]] = [
                 "notes":{"type":"string"}
             },
             "required": ["business_id","name"]
+        },
+    },
+    {
+        "name": "leads.list",
+        "description": "List leads captured for a business.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "business_id": {"type": "string"},
+            },
+            "required": ["business_id"],
         },
     },
     {
@@ -133,10 +181,14 @@ def mcp_tools_call(call: ToolCall):
     base = _self_base()
     try:
         routes = {
+            "business.search": "/tools/business/search",
+            "business.services.find": "/tools/business/services/find",
             "appointments.book": "/tools/appointment/book",
             "appointments.list": "/tools/appointment/list",
             "invoice.create": "/tools/invoice/create",
+            "invoice.list": "/tools/invoice/list",
             "leads.create": "/tools/leads/create",
+            "leads.list": "/tools/leads/list",
             "campaign.send_whatsapp": "/tools/campaign/sendWhatsApp",
             "analytics.report": "/tools/analytics/report",
         }

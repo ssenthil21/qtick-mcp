@@ -20,6 +20,7 @@ __all__ = [
     "CampaignService",
     "InvoiceService",
     "LeadService",
+    "BusinessDirectoryService",
 ]
 
 _SERVICE_MODULES = {
@@ -28,6 +29,7 @@ _SERVICE_MODULES = {
     "CampaignService": "campaign",
     "InvoiceService": "invoice",
     "LeadService": "leads",
+    "BusinessDirectoryService": "business",
 }
 
 
@@ -44,6 +46,7 @@ def __getattr__(name: str) -> Any:
 if TYPE_CHECKING:  # pragma: no cover - import for static analysis only
     from .analytics import AnalyticsService as AnalyticsService
     from .appointment import AppointmentService as AppointmentService
+    from .business import BusinessDirectoryService as BusinessDirectoryService
     from .campaign import CampaignService as CampaignService
     from .invoice import InvoiceService as InvoiceService
     from .leads import LeadService as LeadService

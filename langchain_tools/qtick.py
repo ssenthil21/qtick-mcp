@@ -1,14 +1,11 @@
 
 import os
-from datetime import datetime, timedelta
-import re
+from datetime import datetime
 from typing import List, Optional
 
-import dateparser
 import requests
 from langchain.tools import StructuredTool
-from pydantic import BaseModel, Field, validator
-from zoneinfo import ZoneInfo
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.config import runtime_default_mcp_base_url
 
@@ -32,22 +29,90 @@ def configure(*, base_url: Optional[str] = None) -> None:
     if base_url:
         MCP_BASE = base_url.rstrip("/")
 
+# ---------- Business Search ----------
+class BusinessSearchInput(BaseModel):
+    query: str
+    limit: int = Field(default=10, ge=1, le=25)
+
+
+def _business_search(query: str, limit: int = 10):
+    payload = {"query": query, "limit": limit}
+    r = requests.post(f"{MCP_BASE}/tools/business/search", json=payload, timeout=15)
+    r.raise_for_status()
+    return r.json()
+
+
+def business_search_tool():
+    return StructuredTool.from_function(
+        name="business_search",
+        description="Search for QTick businesses by name, id, or tags.",
+        func=_business_search,
+        args_schema=BusinessSearchInput,
+    )
+
+
+# ---------- Service Lookup ----------
+class ServiceLookupInput(BaseModel):
+    service_name: str = Field(..., description="Service name or keyword")
+    business_id: Optional[str] = None
+    business_name: Optional[str] = None
+    limit: int = Field(default=5, ge=1, le=20)
+
+    @model_validator(mode="after")
+    def ensure_business_selector(cls, model: "ServiceLookupInput") -> "ServiceLookupInput":
+        if not model.business_id and not model.business_name:
+            raise ValueError("Either business_id or business_name must be provided")
+        return model
+
+
+def _service_lookup(
+    service_name: str,
+    business_id: Optional[str] = None,
+    business_name: Optional[str] = None,
+    limit: int = 5,
+):
+    payload = {
+        "service_name": service_name,
+        "business_id": business_id,
+        "business_name": business_name,
+        "limit": limit,
+    }
+    r = requests.post(
+        f"{MCP_BASE}/tools/business/services/find",
+        json=payload,
+        timeout=15,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def business_service_lookup_tool():
+    return StructuredTool.from_function(
+        name="business_service_lookup",
+        description="Find service identifiers for a business using keywords.",
+        func=_service_lookup,
+        args_schema=ServiceLookupInput,
+    )
+
+
 # ---------- Appointment Book ----------
 class BookAppointmentInput(BaseModel):
     business_id: str
     customer_name: str
-    service_id: str
+    service_id: int
     datetime: str
 
-    @validator("datetime")
-    def ensure_iso8601(cls, v):
+    @field_validator("datetime")
+    def ensure_iso8601(cls, value: str) -> str:
         try:
-            datetime.fromisoformat(v.replace("Z", "+00:00"))
-        except Exception:
-            raise ValueError("datetime must be ISO 8601 (e.g. 2025-09-06T17:00:00+08:00)")
-        return v
+            datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except Exception as exc:  # pragma: no cover - defensive
+            raise ValueError(
+                "datetime must be ISO 8601 (e.g. 2025-09-06T17:00:00+08:00)"
+            ) from exc
+        return value
 
-def _book_appointment(business_id: str, customer_name: str, service_id: str, datetime: str):
+def _book_appointment(business_id: str, customer_name: str, service_id: int, datetime: str):
     payload = {"business_id": business_id, "customer_name": customer_name, "service_id": service_id, "datetime": datetime}
     r = requests.post(f"{MCP_BASE}/tools/appointment/book", json=payload, timeout=15)
     r.raise_for_status()
@@ -84,6 +149,26 @@ def appointment_list_tool():
         args_schema=AppointmentListInput,
     )
 
+# ---------- Invoice List ----------
+class InvoiceListInput(BaseModel):
+    business_id: str
+
+
+def _invoice_list(business_id: str):
+    payload = {"business_id": business_id}
+    r = requests.post(f"{MCP_BASE}/tools/invoice/list", json=payload, timeout=15)
+    r.raise_for_status()
+    return r.json()
+
+
+def invoice_list_tool():
+    return StructuredTool.from_function(
+        name="invoice_list",
+        description="List invoices raised for a business.",
+        func=_invoice_list,
+        args_schema=InvoiceListInput,
+    )
+
 # ---------- Invoice Create ----------
 class LineItemInput(BaseModel):
     item_id: Optional[str] = None
@@ -94,14 +179,13 @@ class LineItemInput(BaseModel):
     price: Optional[float] = None
     tax_rate: float = 0.0
 
-    @validator("unit_price", always=True)
-    def coerce_unit_price(cls, v, values):
-        if v is None:
-            alt = values.get("price")
-            if alt is None:
+    @model_validator(mode="after")
+    def ensure_unit_price(cls, model: "LineItemInput") -> "LineItemInput":
+        if model.unit_price is None:
+            if model.price is None:
                 raise ValueError("unit_price (or alias 'price') is required")
-            return alt
-        return v
+            model.unit_price = model.price
+        return model
 
 class InvoiceCreateInput(BaseModel):
     business_id: str
@@ -155,6 +239,26 @@ def lead_create_tool():
         description="Create a new customer lead with optional contact details and source.",
         func=_lead_create,
         args_schema=LeadCreateInput,
+    )
+
+# ---------- Lead List ----------
+class LeadListInput(BaseModel):
+    business_id: str
+
+
+def _lead_list(business_id: str):
+    payload = {"business_id": business_id}
+    r = requests.post(f"{MCP_BASE}/tools/leads/list", json=payload, timeout=15)
+    r.raise_for_status()
+    return r.json()
+
+
+def lead_list_tool():
+    return StructuredTool.from_function(
+        name="lead_list",
+        description="List captured leads for a business.",
+        func=_lead_list,
+        args_schema=LeadListInput,
     )
 
 # ---------- Campaign WhatsApp ----------
