@@ -1,18 +1,32 @@
-# TEST_mcp_client_sse.py
-import asyncio, os
-from mcp.client.session import ClientSession
+# TEST_mcp_client_sse.py (point to /sse/messages/)
+import os
+import asyncio
+import logging
+
 from mcp.client.sse import sse_client
+try:
+    from mcp.client.session import ClientSession  # NEW
+except ImportError:
+    from mcp.shared.session import ClientSession  # OLD
+
+logging.basicConfig(level=logging.DEBUG, format="%(asctime)s %(levelname)-8s [%(name)s] %(message)s", force=True)
+for name in ["mcp", "mcp.client", "mcp.shared", "httpx", "anyio"]:
+    logging.getLogger(name).setLevel(logging.DEBUG)
+
+# IMPORTANT: point to /sse/messages/
+BASE = os.getenv("TEST_MCP_SSE", "http://127.0.0.1:8000/sse/messages/")
+HEADERS = {}
 
 async def main():
-    url = os.getenv("TEST_MCP_SSE", "http://127.0.0.1:8000/sse")
-    headers = {"X-API-Key": os.getenv("QTF_API_KEY")} if os.getenv("QTF_API_KEY") else None
-    async with sse_client(url, headers=headers) as (r, w):
+    print("TEST_MCP_SSE =", BASE)
+    async with sse_client(BASE, headers=HEADERS) as (r, w):
         async with ClientSession(r, w) as s:
             await s.initialize()
             tools = await s.list_tools()
             print("TOOLS:", [t.name for t in tools.tools])
-            res = await s.call_tool("ping", {})
-            print("PING:", res.content[0].text if res.content else res)
+
+            res = await s.call_tool("ping", {"message": "hello"})
+            print("PING RESULT:", res)
 
 if __name__ == "__main__":
     asyncio.run(main())

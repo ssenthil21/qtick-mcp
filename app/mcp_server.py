@@ -1,15 +1,18 @@
-# app/mcp_server.py
+# app/mcp_server.py (DEBUG-safe schemas)
 from __future__ import annotations
 
+import logging
 from typing import List, Optional, Literal
 from pydantic import BaseModel, Field
 from mcp.server.fastmcp import FastMCP, Context
+
+log = logging.getLogger("qtick.mcp")
 
 # Name shown to clients (ChatGPT Custom Connector etc.)
 mcp = FastMCP("qtick_mcp")
 
 # --------------------------
-# Shared, JSON-safe models
+# JSON-safe models
 # --------------------------
 class Appointment(BaseModel):
     id: str
@@ -26,15 +29,13 @@ class InvoiceItem(BaseModel):
     tax_rate: float = 0.0
 
 # --------------------------
-# Tools: inputs/outputs
+# Tool I/O models
 # --------------------------
 class AppointmentBookInput(BaseModel):
     business_id: str = Field(..., description="Business ID, e.g. 'chillbreeze'")
     customer_name: str = Field(..., description="Customer full name")
     service: str = Field(..., description="Service name, e.g. 'haircut'")
-    start_time: str = Field(
-        ..., description="Start time in ISO 8601, e.g. '2025-09-22T17:00:00+08:00'"
-    )
+    start_time: str = Field(..., description="Start time ISO 8601, e.g. '2025-09-22T17:00:00+08:00'")
 
 class AppointmentBookOutput(Appointment):
     pass
@@ -64,22 +65,20 @@ class LeadCreateInput(BaseModel):
     name: str
     phone: Optional[str] = None
     email: Optional[str] = None
-    source: Optional[str] = Field(
-        None, description="Lead source, e.g. 'walk-in', 'whatsapp', 'web'"
-    )
+    source: Optional[str] = Field(None, description="Lead source, e.g. 'walk-in', 'whatsapp', 'web'")
 
 class LeadCreateOutput(BaseModel):
     lead_id: str
     status: Literal["created"]
 
 # --------------------------
-# Tools: implementations
+# Tools
 # --------------------------
 @mcp.tool(name="appointments_book", description="Book an appointment")
 async def appointments_book(input: AppointmentBookInput, ctx: Context) -> AppointmentBookOutput:
-    # Simulate a successful booking (replace with real call to your Kotlin svc)
+    log.debug("appointments_book input=%s", input.model_dump())
     appt_id = f"appt_{input.business_id}_{input.customer_name.replace(' ', '_')}"
-    return AppointmentBookOutput(
+    out = AppointmentBookOutput(
         id=appt_id,
         business_id=input.business_id,
         customer_name=input.customer_name,
@@ -87,25 +86,38 @@ async def appointments_book(input: AppointmentBookInput, ctx: Context) -> Appoin
         start_time=input.start_time,
         status="booked",
     )
+    log.debug("appointments_book output=%s", out.model_dump())
+    return out
 
 @mcp.tool(name="appointments_list", description="List appointments")
 async def appointments_list(input: AppointmentListInput, ctx: Context) -> AppointmentListOutput:
-    # Return an empty list as a safe default (replace with real data)
-    return AppointmentListOutput(appointments=[])
+    log.debug("appointments_list input=%s", input.model_dump())
+    out = AppointmentListOutput(appointments=[])
+    log.debug("appointments_list output=%s", out.model_dump())
+    return out
 
 @mcp.tool(name="invoice_create", description="Create an invoice from line items")
 async def invoice_create(input: InvoiceCreateInput, ctx: Context) -> InvoiceCreateOutput:
+    log.debug("invoice_create input=%s", input.model_dump())
     total = 0.0
     for it in input.items:
         total += float(it.quantity) * float(it.unit_price) * (1.0 + float(it.tax_rate))
-    inv_id = f"inv_{input.business_id}"
-    return InvoiceCreateOutput(invoice_id=inv_id, total=round(total, 2), currency=input.currency)
+    out = InvoiceCreateOutput(
+        invoice_id=f"inv_{input.business_id}",
+        total=round(total, 2),
+        currency=input.currency,
+    )
+    log.debug("invoice_create output=%s", out.model_dump())
+    return out
 
 @mcp.tool(name="leads_create", description="Create a new lead for a business")
 async def leads_create(input: LeadCreateInput, ctx: Context) -> LeadCreateOutput:
-    lead_id = f"lead_{input.business_id}"
-    return LeadCreateOutput(lead_id=lead_id, status="created")
+    log.debug("leads_create input=%s", input.model_dump())
+    out = LeadCreateOutput(lead_id=f"lead_{input.business_id}", status="created")
+    log.debug("leads_create output=%s", out.model_dump())
+    return out
 
 @mcp.tool(name="ping", description="Health check")
 async def ping(message: str) -> str:
+    log.debug("ping %s", message)
     return f"pong: {message}"
