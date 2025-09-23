@@ -22,15 +22,52 @@ def _resolve_mcp_base_url() -> str:
     return runtime_default_mcp_base_url()
 
 
+def _resolve_request_timeout() -> float:
+    """Resolve the timeout to use for tool HTTP requests."""
+
+    for env_key in ("QTICK_AGENT_TOOL_TIMEOUT", "AGENT_TOOL_TIMEOUT"):
+        raw = os.getenv(env_key)
+        if not raw:
+            continue
+        try:
+            value = float(raw)
+        except (TypeError, ValueError):
+            continue
+        if value > 0:
+            return value
+    return 30.0
+
+
+def _normalize_timeout(value: float) -> float:
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError) as exc:  # pragma: no cover - defensive
+        raise ValueError("timeout must be a positive number") from exc
+    if numeric <= 0:  # pragma: no cover - defensive
+        raise ValueError("timeout must be positive")
+    return numeric
+
+
 MCP_BASE = _resolve_mcp_base_url()
+REQUEST_TIMEOUT = _resolve_request_timeout()
 
 
-def configure(*, base_url: Optional[str] = None) -> None:
+def configure(*, base_url: Optional[str] = None, timeout: Optional[float] = None) -> None:
     """Configure the MCP base URL used by the LangChain tools."""
 
-    global MCP_BASE
+    global MCP_BASE, REQUEST_TIMEOUT
     if base_url:
         MCP_BASE = base_url.rstrip("/")
+    if timeout is not None:
+        REQUEST_TIMEOUT = _normalize_timeout(timeout)
+
+
+def _post_tool(path: str, payload: dict) -> dict:
+    response = requests.post(
+        f"{MCP_BASE}{path}", json=payload, timeout=REQUEST_TIMEOUT
+    )
+    response.raise_for_status()
+    return response.json()
 
 # ---------- Business Search ----------
 class BusinessSearchInput(BaseModel):
@@ -40,9 +77,7 @@ class BusinessSearchInput(BaseModel):
 
 def _business_search(query: str, limit: int = 10):
     payload = {"query": query, "limit": limit}
-    r = requests.post(f"{MCP_BASE}/tools/business/search", json=payload, timeout=15)
-    r.raise_for_status()
-    return r.json()
+    return _post_tool("/tools/business/search", payload)
 
 
 def business_search_tool():
@@ -74,13 +109,7 @@ def _service_lookup(
         "business_name": business_name,
         "limit": limit,
     }
-    r = requests.post(
-        f"{MCP_BASE}/tools/business/services/find",
-        json=payload,
-        timeout=15,
-    )
-    r.raise_for_status()
-    return r.json()
+    return _post_tool("/tools/business/services/find", payload)
 
 
 def business_service_lookup_tool():
@@ -111,9 +140,7 @@ class BookAppointmentInput(BaseModel):
 
 def _book_appointment(business_id: int, customer_name: str, service_id: int, datetime: str):
     payload = {"business_id": business_id, "customer_name": customer_name, "service_id": service_id, "datetime": datetime}
-    r = requests.post(f"{MCP_BASE}/tools/appointment/book", json=payload, timeout=15)
-    r.raise_for_status()
-    return r.json()
+    return _post_tool("/tools/appointment/book", payload)
 
 def appointment_tool():
     return StructuredTool.from_function(
@@ -134,9 +161,7 @@ class AppointmentListInput(BaseModel):
 
 def _list_appointments(business_id: int, date_from: Optional[str] = None, date_to: Optional[str] = None, status: Optional[str] = None, page: int = 1, page_size: int = 20):
     payload = {"business_id": business_id, "date_from": date_from, "date_to": date_to, "status": status, "page": page, "page_size": page_size}
-    r = requests.post(f"{MCP_BASE}/tools/appointment/list", json=payload, timeout=15)
-    r.raise_for_status()
-    return r.json()
+    return _post_tool("/tools/appointment/list", payload)
 
 def appointment_list_tool():
     return StructuredTool.from_function(
@@ -153,9 +178,7 @@ class InvoiceListInput(BaseModel):
 
 def _invoice_list(business_id: int):
     payload = {"business_id": business_id}
-    r = requests.post(f"{MCP_BASE}/tools/invoice/list", json=payload, timeout=15)
-    r.raise_for_status()
-    return r.json()
+    return _post_tool("/tools/invoice/list", payload)
 
 
 def invoice_list_tool():
@@ -184,11 +207,7 @@ class InvoiceMarkPaidInput(BaseModel):
 
 def _invoice_mark_paid(invoice_id: str, paid_at: Optional[str] = None):
     payload = {"invoice_id": invoice_id, "paid_at": paid_at}
-    r = requests.post(
-        f"{MCP_BASE}/tools/invoice/mark-paid", json=payload, timeout=15
-    )
-    r.raise_for_status()
-    return r.json()
+    return _post_tool("/tools/invoice/mark-paid", payload)
 
 
 def invoice_mark_paid_tool():
@@ -236,9 +255,7 @@ def _invoice_create(business_id: int, customer_name: str, items: List[LineItemIn
             "tax_rate": i.tax_rate
         })
     payload = {"business_id": business_id, "customer_name": customer_name, "items": norm_items, "currency": currency, "appointment_id": appointment_id, "notes": notes}
-    r = requests.post(f"{MCP_BASE}/tools/invoice/create", json=payload, timeout=15)
-    r.raise_for_status()
-    return r.json()
+    return _post_tool("/tools/invoice/create", payload)
 
 def invoice_create_tool():
     return StructuredTool.from_function(
@@ -266,9 +283,7 @@ def _lead_create(
     notes: Optional[str] = None,
 ):
     payload = {"business_id": business_id, "name": name, "phone": phone, "email": email, "source": source, "notes": notes}
-    r = requests.post(f"{MCP_BASE}/tools/leads/create", json=payload, timeout=15)
-    r.raise_for_status()
-    return r.json()
+    return _post_tool("/tools/leads/create", payload)
 
 def lead_create_tool():
     return StructuredTool.from_function(
@@ -285,9 +300,7 @@ class LeadListInput(BaseModel):
 
 def _lead_list(business_id: int):
     payload = {"business_id": business_id}
-    r = requests.post(f"{MCP_BASE}/tools/leads/list", json=payload, timeout=15)
-    r.raise_for_status()
-    return r.json()
+    return _post_tool("/tools/leads/list", payload)
 
 
 def lead_list_tool():
@@ -308,9 +321,7 @@ class SendWhatsAppInput(BaseModel):
 
 def _send_whatsapp(customer_name: str, phone_number: str, message_template: str, offer_code: str, expiry: str):
     payload = {"customer_name": customer_name, "phone_number": phone_number, "message_template": message_template, "offer_code": offer_code, "expiry": expiry}
-    r = requests.post(f"{MCP_BASE}/tools/campaign/sendWhatsApp", json=payload, timeout=15)
-    r.raise_for_status()
-    return r.json()
+    return _post_tool("/tools/campaign/sendWhatsApp", payload)
 
 def campaign_tool():
     return StructuredTool.from_function(
@@ -328,9 +339,7 @@ class AnalyticsInput(BaseModel):
 
 def _analytics_report(business_id: int, metrics: List[str], period: str):
     payload = {"business_id": business_id, "metrics": metrics, "period": period}
-    r = requests.post(f"{MCP_BASE}/tools/analytics/report", json=payload, timeout=15)
-    r.raise_for_status()
-    return r.json()
+    return _post_tool("/tools/analytics/report", payload)
 
 def analytics_tool():
     return StructuredTool.from_function(
@@ -358,11 +367,7 @@ class LiveOpsInput(BaseModel):
 
 def _live_ops_events(business_id: int, date: Optional[str] = None):
     payload = {"business_id": business_id, "date": date}
-    r = requests.post(
-        f"{MCP_BASE}/tools/live-ops/events", json=payload, timeout=15
-    )
-    r.raise_for_status()
-    return r.json()
+    return _post_tool("/tools/live-ops/events", payload)
 
 
 def live_ops_tool():
