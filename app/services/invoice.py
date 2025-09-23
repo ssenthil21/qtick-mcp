@@ -6,6 +6,7 @@ from app.clients.java import JavaServiceClient
 from app.schemas.billing import (
     InvoiceListRequest,
     InvoiceListResponse,
+    InvoicePaymentRequest,
     InvoiceRequest,
     InvoiceResponse,
     InvoiceSummary,
@@ -60,6 +61,8 @@ class InvoiceService:
                     currency=str(invoice["currency"]),
                     created_at=str(invoice["created_at"]),
                     status=str(invoice["status"]),
+                    customer_name=str(invoice.get("customer_name")) if invoice.get("customer_name") else None,
+                    paid_at=str(invoice.get("paid_at")) if invoice.get("paid_at") else None,
                 )
                 for invoice in invoices
             ]
@@ -74,3 +77,26 @@ class InvoiceService:
         except Exception as exc:  # pragma: no cover - defensive
             logger.exception("Unexpected error while listing invoices")
             raise ServiceError("Failed to list invoices", cause=exc)
+
+    async def mark_paid(self, request: InvoicePaymentRequest) -> InvoiceResponse:
+        logger.info("Marking invoice %s as paid", request.invoice_id)
+        if self._client.use_mock_data:
+            await self._client.simulate_latency()
+            if not self._repository:
+                raise RuntimeError("Mock invoice repository not configured")
+            try:
+                return await self._repository.mark_paid(
+                    request.invoice_id, paid_at=request.paid_at
+                )
+            except KeyError as exc:  # pragma: no cover - defensive
+                raise ServiceError(str(exc)) from exc
+
+        try:
+            payload = request.model_dump()
+            data = await self._client.post("/invoices/mark-paid", payload)
+            return InvoiceResponse(**data)
+        except ServiceError:
+            raise
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.exception("Unexpected error while marking invoice as paid")
+            raise ServiceError("Failed to update invoice status", cause=exc)

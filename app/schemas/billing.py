@@ -24,8 +24,11 @@ class InvoiceResponse(BaseModel):
     total: float
     currency: str
     created_at: str
+    customer_name: Optional[str] = None
     payment_link: Optional[str] = None
     status: str
+    paid_at: Optional[str] = None
+    review_request_id: Optional[str] = None
 
 
 class InvoiceSummary(BaseModel):
@@ -34,6 +37,8 @@ class InvoiceSummary(BaseModel):
     currency: str
     created_at: str
     status: str
+    customer_name: Optional[str] = None
+    paid_at: Optional[str] = None
 
 
 class InvoiceListRequest(BaseModel):
@@ -43,3 +48,8 @@ class InvoiceListRequest(BaseModel):
 class InvoiceListResponse(BaseModel):
     total: int
     items: List[InvoiceSummary]
+
+
+class InvoicePaymentRequest(BaseModel):
+    invoice_id: str
+    paid_at: Optional[str] = None

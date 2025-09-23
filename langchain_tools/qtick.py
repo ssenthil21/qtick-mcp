@@ -166,6 +166,39 @@ def invoice_list_tool():
         args_schema=InvoiceListInput,
     )
 
+# ---------- Invoice Mark Paid ----------
+class InvoiceMarkPaidInput(BaseModel):
+    invoice_id: str
+    paid_at: Optional[str] = None
+
+    @field_validator("paid_at")
+    def ensure_paid_at(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return value
+        try:
+            datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except Exception as exc:  # pragma: no cover - defensive
+            raise ValueError("paid_at must be ISO 8601") from exc
+        return value
+
+
+def _invoice_mark_paid(invoice_id: str, paid_at: Optional[str] = None):
+    payload = {"invoice_id": invoice_id, "paid_at": paid_at}
+    r = requests.post(
+        f"{MCP_BASE}/tools/invoice/mark-paid", json=payload, timeout=15
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def invoice_mark_paid_tool():
+    return StructuredTool.from_function(
+        name="invoice_mark_paid",
+        description="Mark an invoice as paid and trigger the post-payment review flow.",
+        func=_invoice_mark_paid,
+        args_schema=InvoiceMarkPaidInput,
+    )
+
 # ---------- Invoice Create ----------
 class LineItemInput(BaseModel):
     item_id: Optional[str] = None
@@ -305,6 +338,39 @@ def analytics_tool():
         description="Fetch analytics for a business for a period.",
         func=_analytics_report,
         args_schema=AnalyticsInput,
+    )
+
+# ---------- Live Operations Summary ----------
+class LiveOpsInput(BaseModel):
+    business_id: int
+    date: Optional[str] = None
+
+    @field_validator("date")
+    def ensure_date(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return value
+        try:
+            datetime.fromisoformat(value)
+        except Exception as exc:  # pragma: no cover - defensive
+            raise ValueError("date must be YYYY-MM-DD") from exc
+        return value
+
+
+def _live_ops_events(business_id: int, date: Optional[str] = None):
+    payload = {"business_id": business_id, "date": date}
+    r = requests.post(
+        f"{MCP_BASE}/tools/live-ops/events", json=payload, timeout=15
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def live_ops_tool():
+    return StructuredTool.from_function(
+        name="live_ops_events",
+        description="Summarise key business events (appointments, invoices, leads, reviews) for today.",
+        func=_live_ops_events,
+        args_schema=LiveOpsInput,
     )
 
 # ---------- DateTime Parser ----------

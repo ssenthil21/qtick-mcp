@@ -41,14 +41,24 @@ class ServiceLookupRequest(BaseModel):
 
     @model_validator(mode="after")
     def validate_business_selector(cls, values: "ServiceLookupRequest") -> "ServiceLookupRequest":
-        if not values.business_id and not values.business_name:
-            raise ValueError("Either business_id or business_name must be provided")
+        if not values.business_id and values.business_name:
+            normalized = values.business_name.strip()
+            if not normalized:
+                raise ValueError("business_name cannot be empty when provided")
+            values.business_name = normalized
         return values
+
+
+class BusinessServiceMatch(BaseModel):
+    business: BusinessSummary
+    services: List[ServiceSummary]
 
 
 class ServiceLookupResponse(BaseModel):
     query: str
-    business: BusinessSummary
-    matches: List[ServiceSummary]
+    business: Optional[BusinessSummary] = None
+    matches: List[ServiceSummary] = Field(default_factory=list)
     exact_match: Optional[ServiceSummary] = None
     message: Optional[str] = None
+    business_candidates: Optional[List[BusinessSummary]] = None
+    service_matches: Optional[List[BusinessServiceMatch]] = None

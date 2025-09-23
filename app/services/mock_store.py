@@ -18,6 +18,7 @@ from app.schemas.billing import InvoiceRequest, InvoiceResponse
 from app.schemas.campaign import CampaignRequest, CampaignResponse
 from app.schemas.business import BusinessSearchResponse, BusinessSummary, ServiceSummary
 from app.schemas.lead import LeadCreateRequest, LeadCreateResponse
+from app.schemas.review import ReviewRecord
 
 
 def _utc_now_iso() -> str:
@@ -202,6 +203,30 @@ class MasterDataRepository:
                 return record
         return None
 
+    @staticmethod
+    def _summary_from_record(record: BusinessRecord) -> BusinessSummary:
+        return BusinessSummary(
+            business_id=record.business_id,
+            name=record.name,
+            location=record.location,
+            tags=list(record.tags),
+        )
+
+    def find_businesses_by_name(self, query: str) -> List[BusinessSummary]:
+        normalized = query.strip().lower()
+        if not normalized:
+            return []
+
+        matches: List[BusinessRecord] = []
+        for record in self._businesses_by_id.values():
+            if normalized in record.name.lower() or normalized in record.slug:
+                matches.append(record)
+                continue
+            if any(normalized in tag.lower() for tag in record.tags):
+                matches.append(record)
+        matches.sort(key=lambda record: record.name)
+        return [self._summary_from_record(record) for record in matches]
+
     def search_businesses(self, query: str, limit: int) -> BusinessSearchResponse:
         normalized = query.lower()
         matches = [
@@ -213,12 +238,7 @@ class MasterDataRepository:
         ]
         matches.sort(key=lambda record: record.name)
         items = [
-            BusinessSummary(
-                business_id=record.business_id,
-                name=record.name,
-                location=record.location,
-                tags=list(record.tags),
-            )
+            self._summary_from_record(record)
             for record in matches[:limit]
         ]
         return BusinessSearchResponse(query=query, total=len(matches), items=items)
@@ -249,6 +269,21 @@ class MasterDataRepository:
             )
             for service in matches[:limit]
         ]
+
+    def find_businesses_for_service(
+        self, query: str, limit_per_business: int
+    ) -> List[tuple[BusinessSummary, List[ServiceSummary]]]:
+        normalized = query.strip().lower()
+        if not normalized:
+            return []
+
+        results: List[tuple[BusinessSummary, List[ServiceSummary]]] = []
+        for record in sorted(self._businesses_by_id.values(), key=lambda item: item.name):
+            matches = self.find_services(record, normalized, limit_per_business)
+            if not matches:
+                continue
+            results.append((self._summary_from_record(record), matches))
+        return results
 
 
 class AppointmentRepository(_BaseRepository):
@@ -418,9 +453,10 @@ class AppointmentRepository(_BaseRepository):
 
 
 class InvoiceRepository(_BaseRepository):
-    def __init__(self) -> None:
+    def __init__(self, review_repository: "ReviewRepository" | None = None) -> None:
         super().__init__("INV")
         self._invoices: Dict[str, Dict[str, object]] = {}
+        self._review_repository = review_repository
 
     async def create(self, request: InvoiceRequest) -> InvoiceResponse:
         total = 0.0
@@ -436,17 +472,27 @@ class InvoiceRepository(_BaseRepository):
         total = round(total, 2)
 
         invoice_id = self._next_id()
+        created_at = _utc_now_iso()
         record = {
             "invoice_id": invoice_id,
             "business_id": request.business_id,
             "total": total,
             "currency": request.currency,
-            "created_at": _utc_now_iso(),
+            "created_at": created_at,
             "payment_link": f"https://pay.qtick.co/{invoice_id}",
             "status": "created",
+            "customer_name": request.customer_name,
         }
         self._invoices[invoice_id] = record
-        return InvoiceResponse(**record)
+        return InvoiceResponse(
+            invoice_id=invoice_id,
+            total=total,
+            currency=request.currency,
+            created_at=created_at,
+            customer_name=request.customer_name,
+            payment_link=record["payment_link"],
+            status="created",
+        )
 
     async def list(self, business_id: Optional[int] = None) -> List[Dict[str, object]]:
         if business_id is None:
@@ -463,6 +509,39 @@ class InvoiceRepository(_BaseRepository):
 
     async def delete(self, invoice_id: str) -> bool:
         return self._invoices.pop(invoice_id, None) is not None
+
+    async def mark_paid(
+        self, invoice_id: str, *, paid_at: Optional[str] = None
+    ) -> InvoiceResponse:
+        invoice = self._invoices.get(invoice_id)
+        if not invoice:
+            raise KeyError(f"Invoice {invoice_id} not found")
+
+        timestamp = paid_at or _utc_now_iso()
+        invoice["status"] = "paid"
+        invoice["paid_at"] = timestamp
+
+        review_request_id: Optional[str] = None
+        if self._review_repository is not None:
+            review_record = await self._review_repository.create_request(
+                business_id=int(invoice["business_id"]),
+                invoice_id=invoice_id,
+                customer_name=str(invoice.get("customer_name", "Customer")),
+                requested_at=timestamp,
+            )
+            review_request_id = review_record.review_id
+
+        return InvoiceResponse(
+            invoice_id=invoice_id,
+            total=float(invoice["total"]),
+            currency=str(invoice["currency"]),
+            created_at=str(invoice["created_at"]),
+            customer_name=str(invoice.get("customer_name")),
+            payment_link=str(invoice.get("payment_link")),
+            status=str(invoice["status"]),
+            paid_at=str(invoice.get("paid_at")),
+            review_request_id=review_request_id,
+        )
 
 
 class LeadRepository(_BaseRepository):
@@ -507,6 +586,49 @@ class LeadRepository(_BaseRepository):
 
     async def delete(self, lead_id: str) -> bool:
         return self._leads.pop(lead_id, None) is not None
+
+
+class ReviewRepository(_BaseRepository):
+    def __init__(self) -> None:
+        super().__init__("REV")
+        self._reviews: Dict[str, Dict[str, object]] = {}
+
+    async def create_request(
+        self,
+        *,
+        business_id: int,
+        invoice_id: str,
+        customer_name: str,
+        requested_at: Optional[str] = None,
+    ) -> "ReviewRecord":
+        review_id = self._next_id()
+        timestamp = requested_at or _utc_now_iso()
+        record = {
+            "review_id": review_id,
+            "business_id": business_id,
+            "invoice_id": invoice_id,
+            "customer_name": customer_name,
+            "status": "pending",
+            "requested_at": timestamp,
+            "completed_at": None,
+            "rating": None,
+            "feedback": None,
+        }
+        self._reviews[review_id] = record
+        return ReviewRecord(**record)
+
+    async def list(self, business_id: Optional[int] = None) -> List[Dict[str, object]]:
+        if business_id is None:
+            return [dict(review) for review in self._reviews.values()]
+        return [
+            dict(review)
+            for review in self._reviews.values()
+            if review["business_id"] == business_id
+        ]
+
+    async def get(self, review_id: str) -> Optional[Dict[str, object]]:
+        review = self._reviews.get(review_id)
+        return dict(review) if review is not None else None
 
 
 class CampaignRepository(_BaseRepository):
@@ -579,6 +701,7 @@ class MockDataStore:
     leads: LeadRepository
     campaigns: CampaignRepository
     analytics: AnalyticsRepository
+    reviews: ReviewRepository
 
 
 _mock_store: Optional[MockDataStore] = None
@@ -589,7 +712,8 @@ def get_mock_store() -> MockDataStore:
     if _mock_store is None:
         master_data = MasterDataRepository()
         appointments = AppointmentRepository(master_data)
-        invoices = InvoiceRepository()
+        reviews = ReviewRepository()
+        invoices = InvoiceRepository(reviews)
         leads = LeadRepository()
         campaigns = CampaignRepository()
         analytics = AnalyticsRepository(appointments, invoices)
@@ -600,6 +724,7 @@ def get_mock_store() -> MockDataStore:
             leads=leads,
             campaigns=campaigns,
             analytics=analytics,
+            reviews=reviews,
         )
     return _mock_store
 

@@ -6,6 +6,7 @@ from app.clients.java import JavaServiceClient
 from app.schemas.business import (
     BusinessSearchRequest,
     BusinessSearchResponse,
+    BusinessServiceMatch,
     BusinessSummary,
     ServiceLookupRequest,
     ServiceLookupResponse,
@@ -54,13 +55,85 @@ class BusinessDirectoryService:
             if not self._repository:
                 raise RuntimeError("Mock master data repository not configured")
 
-            business_identifier = request.business_id or request.business_name
-            assert business_identifier is not None  # for mypy
-            business_record = self._repository.get_business(business_identifier)
-            if not business_record:
-                raise ServiceError(
-                    f"Business '{business_identifier}' not found in master data"
+            if not request.business_id and not request.business_name:
+                grouped = self._repository.find_businesses_for_service(
+                    request.service_name, request.limit
                 )
+                if not grouped:
+                    return ServiceLookupResponse(
+                        query=request.service_name,
+                        message="No businesses currently offer a service with that name.",
+                        service_matches=[],
+                    )
+
+                if len(grouped) == 1:
+                    business_summary, matches = grouped[0]
+                    exact = next(
+                        (
+                            match
+                            for match in matches
+                            if match.name.lower() == request.service_name.lower()
+                        ),
+                        None,
+                    )
+                    message = (
+                        "Found one business offering this service."
+                        if exact
+                        else "Found one business with related services."
+                    )
+                    return ServiceLookupResponse(
+                        query=request.service_name,
+                        business=business_summary,
+                        matches=matches,
+                        exact_match=exact,
+                        message=message,
+                    )
+
+                groups = [
+                    BusinessServiceMatch(business=summary, services=matches)
+                    for summary, matches in grouped
+                ]
+                message = (
+                    "Multiple businesses offer this service. Please choose the intended business."
+                )
+                return ServiceLookupResponse(
+                    query=request.service_name,
+                    business_candidates=[group.business for group in groups],
+                    service_matches=groups,
+                    message=message,
+                )
+
+            business_record = None
+            business_candidates: list[BusinessSummary] | None = None
+            if request.business_id:
+                business_record = self._repository.get_business(request.business_id)
+                if not business_record:
+                    raise ServiceError(
+                        f"Business '{request.business_id}' not found in master data"
+                    )
+            else:
+                business_candidates = self._repository.find_businesses_by_name(
+                    request.business_name or ""
+                )
+                if not business_candidates:
+                    raise ServiceError(
+                        f"Business '{request.business_name}' not found in master data"
+                    )
+                if len(business_candidates) > 1:
+                    return ServiceLookupResponse(
+                        query=request.service_name,
+                        business_candidates=business_candidates,
+                        message=(
+                            "Multiple businesses matched the provided name. Please choose the correct business before searching services."
+                        ),
+                    )
+                business_record = self._repository.get_business(
+                    business_candidates[0].business_id
+                )
+                if not business_record:
+                    raise ServiceError(
+                        f"Business '{business_candidates[0].business_id}' not found in master data"
+                    )
 
             matches = self._repository.find_services(
                 business_record, request.service_name, request.limit
