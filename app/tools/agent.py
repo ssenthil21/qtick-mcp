@@ -416,7 +416,9 @@ def summarize_tool_result(
 @lru_cache(maxsize=1)
 def _get_agent_bundle(cache_key: Tuple[str, str, float]):
     settings = get_settings()
-    configure(base_url=str(settings.mcp_base_url))
+    configure(
+        base_url=str(settings.mcp_base_url), timeout=settings.agent_tool_timeout
+    )
     if settings.google_api_key:
         os.environ.setdefault("GOOGLE_API_KEY", settings.google_api_key)
     elif not os.getenv("GOOGLE_API_KEY"):

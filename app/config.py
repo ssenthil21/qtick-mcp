@@ -45,6 +45,7 @@ class Settings(BaseSettings):
     mcp_base_url: AnyHttpUrl = Field(
         default_factory=runtime_default_mcp_base_url, alias="MCP_BASE_URL"
     )
+    agent_tool_timeout: float = Field(default=30.0, alias="AGENT_TOOL_TIMEOUT")
 
     model_config = SettingsConfigDict(env_prefix="QTICK_", case_sensitive=False)
 

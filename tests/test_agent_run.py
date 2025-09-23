@@ -80,9 +80,10 @@ def test_agent_config_uses_runtime_port_default(monkeypatch):
     captured = {}
     real_configure = agent_mod.configure
 
-    def spy_configure(*, base_url: str) -> None:
+    def spy_configure(*, base_url: str, timeout: float | None = None) -> None:
         captured["base_url"] = base_url
-        real_configure(base_url=base_url)
+        captured["timeout"] = timeout
+        real_configure(base_url=base_url, timeout=timeout)
 
     monkeypatch.setattr(agent_mod, "configure", spy_configure)
     monkeypatch.setattr(agent_mod, "ChatGoogleGenerativeAI", lambda **_: object())
@@ -96,6 +97,7 @@ def test_agent_config_uses_runtime_port_default(monkeypatch):
 
     assert captured["base_url"].startswith("http://127.0.0.1:10000")
     assert qtick_module.MCP_BASE == "http://127.0.0.1:10000"
+    assert captured["timeout"] == settings.agent_tool_timeout
 
 
 def test_agent_config_local_default(monkeypatch):
