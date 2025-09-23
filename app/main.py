@@ -16,6 +16,7 @@ from app.tools.business import router as business_router
 from app.tools.campaign import router as campaign_router
 from app.tools.invoice import router as invoice_router
 from app.tools.leads import router as leads_router
+from app.tools.live_ops import router as live_ops_router
 from app.tools.mcp import router as mcp_router
 from app.mcp_server import mcp
 from starlette.routing import Mount
@@ -50,6 +51,7 @@ app.include_router(campaign_router, prefix="/tools/campaign")
 app.include_router(analytics_router, prefix="/tools/analytics")
 app.include_router(invoice_router, prefix="/tools/invoice")
 app.include_router(leads_router, prefix="/tools/leads")
+app.include_router(live_ops_router, prefix="/tools/live-ops")
 app.include_router(agent_router, prefix="/agent")
 app.include_router(mcp_router)  # Exposes /tools/list and /tools/call
 app.include_router(health_router)

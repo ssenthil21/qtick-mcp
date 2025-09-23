@@ -109,6 +109,18 @@ TOOLS: List[Dict[str, Any]] = [
         },
     },
     {
+        "name": "invoice.mark_paid",
+        "description": "Mark an invoice as paid and trigger the post-payment review flow.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "invoice_id": {"type": "string"},
+                "paid_at": {"type": "string", "format": "date-time"},
+            },
+            "required": ["invoice_id"],
+        },
+    },
+    {
         "name": "leads.create",
         "description": "Create a new customer lead.",
         "inputSchema": {
@@ -163,6 +175,18 @@ TOOLS: List[Dict[str, Any]] = [
             "required":["business_id","metrics","period"]
         },
     },
+    {
+        "name": "live_ops.events",
+        "description": "Summarise today's key business events such as appointments, payments, leads and reviews.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "business_id": {"type": "integer"},
+                "date": {"type": "string", "format": "date"},
+            },
+            "required": ["business_id"],
+        },
+    },
 ]
 
 @router.get("/tools/list", dependencies=[Depends(require_api_key)])
@@ -187,10 +211,12 @@ def mcp_tools_call(call: ToolCall):
             "appointments.list": "/tools/appointment/list",
             "invoice.create": "/tools/invoice/create",
             "invoice.list": "/tools/invoice/list",
+            "invoice.mark_paid": "/tools/invoice/mark-paid",
             "leads.create": "/tools/leads/create",
             "leads.list": "/tools/leads/list",
             "campaign.send_whatsapp": "/tools/campaign/sendWhatsApp",
             "analytics.report": "/tools/analytics/report",
+            "live_ops.events": "/tools/live-ops/events",
         }
         if call.name not in routes:
             raise HTTPException(status_code=404, detail=f"Unknown tool: {call.name}")

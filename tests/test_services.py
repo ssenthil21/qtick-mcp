@@ -9,9 +9,17 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from app.schemas.analytics import AnalyticsRequest
 from app.schemas.appointment import AppointmentListRequest, AppointmentRequest
-from app.schemas.billing import InvoiceListRequest, InvoiceRequest, LineItem
+from datetime import datetime, timezone
+
+from app.schemas.billing import (
+    InvoiceListRequest,
+    InvoicePaymentRequest,
+    InvoiceRequest,
+    LineItem,
+)
 from app.schemas.campaign import CampaignRequest
 from app.schemas.business import BusinessSearchRequest, ServiceLookupRequest
+from app.schemas.live_ops import LiveOpsRequest
 from app.schemas.lead import LeadCreateRequest, LeadListRequest
 from app.services.analytics import AnalyticsService
 from app.services.appointment import AppointmentService
@@ -19,6 +27,7 @@ from app.services.business import BusinessDirectoryService
 from app.services.campaign import CampaignService
 from app.services.invoice import InvoiceService
 from app.services.leads import LeadService
+from app.services.live_ops import LiveOperationsService
 from app.services.mock_store import get_mock_store, reset_mock_store
 
 
@@ -168,6 +177,128 @@ def test_mock_invoice_and_analytics_use_shared_store() -> None:
     assert analytics_response.revenue == "SGD 164.80"
 
 
+def test_service_lookup_returns_candidates_when_business_name_ambiguous() -> None:
+    client = MockLatencyClient()
+    service = BusinessDirectoryService(client)
+
+    request = ServiceLookupRequest(service_name="Signature Haircut", business_name="Chillbreeze")
+    response = asyncio.run(service.lookup_service(request))
+
+    assert response.business is None
+    assert response.business_candidates is not None
+    assert len(response.business_candidates) > 1
+    assert response.message and "Multiple businesses" in response.message
+
+
+def test_service_lookup_lists_businesses_for_service_only_query() -> None:
+    client = MockLatencyClient()
+    service = BusinessDirectoryService(client)
+
+    request = ServiceLookupRequest(service_name="Haircut", limit=5)
+    response = asyncio.run(service.lookup_service(request))
+
+    assert response.business is None or response.service_matches is not None
+    assert response.service_matches is not None
+    assert len(response.service_matches) >= 1
+    business_names = {match.business.name for match in response.service_matches}
+    assert any("Chillbreeze" in name for name in business_names)
+
+
+def test_mark_invoice_paid_triggers_review_request() -> None:
+    client = MockLatencyClient()
+    invoices = InvoiceService(client)
+
+    invoice_request = InvoiceRequest(
+        business_id=SEED_CHILLBREEZE_ID,
+        customer_name="Jordan",
+        items=[LineItem(description="Spa", quantity=1, unit_price=88.0)],
+    )
+    invoice = asyncio.run(invoices.create(invoice_request))
+
+    payment_request = InvoicePaymentRequest(
+        invoice_id=invoice.invoice_id,
+        paid_at=datetime.now(timezone.utc).isoformat(),
+    )
+    payment_response = asyncio.run(invoices.mark_paid(payment_request))
+
+    assert payment_response.status == "paid"
+    assert payment_response.review_request_id is not None
+
+    store = get_mock_store()
+    stored_review = asyncio.run(
+        store.reviews.get(payment_response.review_request_id)
+    )
+    assert stored_review is not None
+    assert stored_review["invoice_id"] == invoice.invoice_id
+
+
+def test_live_operations_events_include_recent_activity() -> None:
+    client = MockLatencyClient()
+    appointments = AppointmentService(client)
+    invoices = InvoiceService(client)
+    leads = LeadService(client)
+    live_ops = LiveOperationsService(client)
+
+    now = datetime.now(timezone.utc)
+    appointment_time = now.replace(hour=9, minute=30, second=0, microsecond=0)
+
+    asyncio.run(
+        appointments.book(
+            AppointmentRequest(
+                business_id=SEED_CHILLBREEZE_ID,
+                customer_name="Jamie",
+                service_id=101,
+                datetime=appointment_time.isoformat(),
+            )
+        )
+    )
+
+    invoice = asyncio.run(
+        invoices.create(
+            InvoiceRequest(
+                business_id=SEED_CHILLBREEZE_ID,
+                customer_name="Jamie",
+                items=[LineItem(description="Haircut", quantity=1, unit_price=42.0)],
+            )
+        )
+    )
+
+    asyncio.run(
+        invoices.mark_paid(
+            InvoicePaymentRequest(
+                invoice_id=invoice.invoice_id,
+                paid_at=now.isoformat(),
+            )
+        )
+    )
+
+    asyncio.run(
+        leads.create(
+            LeadCreateRequest(
+                business_id=SEED_CHILLBREEZE_ID,
+                name="Morgan",
+                email="morgan@example.com",
+            )
+        )
+    )
+
+    response = asyncio.run(
+        live_ops.events(
+            LiveOpsRequest(
+                business_id=SEED_CHILLBREEZE_ID,
+                date=now.date().isoformat(),
+            )
+        )
+    )
+
+    assert response.business.business_id == SEED_CHILLBREEZE_ID
+    assert response.date == now.date().isoformat()
+    assert response.total_events >= 3
+    event_types = {event.event_type for event in response.events}
+    assert {"appointment", "invoice", "review"}.issubset(event_types)
+    assert any(event.event_type == "lead" for event in response.events)
+
+
 def test_lead_repository_stores_created_leads() -> None:
     client = MockLatencyClient()
     service = LeadService(client)
@@ -273,11 +404,11 @@ def test_business_directory_search_and_lookup() -> None:
     )
     lookup_response = asyncio.run(service.lookup_service(lookup_request))
 
-    assert lookup_response.matches
+    assert lookup_response.business is None
+    assert lookup_response.business_candidates is not None
+    assert len(lookup_response.business_candidates) >= 2
     assert lookup_response.message is not None
-    assert "Please specify which haircut service" in lookup_response.message
-    assert "Available haircut services" in lookup_response.message
-    assert lookup_response.business.business_id == SEED_CHILLBREEZE_ID
+    assert "Multiple businesses matched" in lookup_response.message
 
 
 def test_haircut_lookup_with_space_prompts_for_specific_service() -> None:
@@ -290,10 +421,11 @@ def test_haircut_lookup_with_space_prompts_for_specific_service() -> None:
     )
     lookup_response = asyncio.run(service.lookup_service(lookup_request))
 
-    assert lookup_response.matches
+    assert lookup_response.business is None
+    assert lookup_response.business_candidates is not None
+    assert any("Chillbreeze" in item.name for item in lookup_response.business_candidates)
     assert lookup_response.message is not None
-    assert "Please specify which haircut service" in lookup_response.message
-    assert "Signature Haircut" in lookup_response.message
+    assert "Multiple businesses matched" in lookup_response.message
 
 
 def test_lead_create_prompts_follow_up_and_list() -> None:

@@ -13,6 +13,7 @@ from app.services import (
     CampaignService,
     InvoiceService,
     LeadService,
+    LiveOperationsService,
 )
 
 
@@ -64,3 +65,9 @@ def get_business_directory_service(
     client: JavaServiceClient = Depends(get_java_client),
 ) -> BusinessDirectoryService:
     return BusinessDirectoryService(client)
+
+
+def get_live_ops_service(
+    client: JavaServiceClient = Depends(get_java_client),
+) -> LiveOperationsService:
+    return LiveOperationsService(client)
