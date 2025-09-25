@@ -86,6 +86,13 @@ class MasterDataRepository:
                 price=38.0,
             ),
             ServiceRecord(
+                service_id=105,
+                name="Men's Haircut",
+                category="grooming",
+                duration_minutes=40,
+                price=32.0,
+            ),
+            ServiceRecord(
                 service_id=102,
                 name="Classic Facial",
                 category="spa",
@@ -101,10 +108,17 @@ class MasterDataRepository:
             ),
             ServiceRecord(
                 service_id=104,
-                name="Kids Haircut",
+                name="Baby Haircut",
                 category="grooming",
                 duration_minutes=30,
                 price=25.0,
+            ),
+            ServiceRecord(
+                service_id=106,
+                name="Women's Haircut",
+                category="grooming",
+                duration_minutes=45,
+                price=36.0,
             ),
         ]
 
@@ -123,6 +137,27 @@ class MasterDataRepository:
                 duration_minutes=90,
                 price=72.0,
             ),
+            ServiceRecord(
+                service_id=203,
+                name="Men's Haircut",
+                category="grooming",
+                duration_minutes=35,
+                price=30.0,
+            ),
+            ServiceRecord(
+                service_id=204,
+                name="Baby Haircut",
+                category="grooming",
+                duration_minutes=25,
+                price=24.0,
+            ),
+            ServiceRecord(
+                service_id=205,
+                name="Women's Haircut",
+                category="grooming",
+                duration_minutes=35,
+                price=30.0,
+            ),
         ]
 
         adayar_services = [
@@ -140,6 +175,27 @@ class MasterDataRepository:
                 duration_minutes=45,
                 price=42.0,
             ),
+            ServiceRecord(
+                service_id=303,
+                name="Men's Haircut",
+                category="grooming",
+                duration_minutes=35,
+                price=34.0,
+            ),
+            ServiceRecord(
+                service_id=304,
+                name="Baby Haircut",
+                category="grooming",
+                duration_minutes=30,
+                price=26.0,
+            ),
+            ServiceRecord(
+                service_id=305,
+                name="Women's Haircut",
+                category="grooming",
+                duration_minutes=40,
+                price=35.0,
+            ),
         ]
 
         self.add_business(
@@ -156,7 +212,7 @@ class MasterDataRepository:
             BusinessRecord(
                 business_id=1002,
                 slug="chillbreeze-anna-nagar",
-                name="Chillbrezze Anna Nagar",
+                name="Chillbreeze Anna Nagar",
                 location="Anna Nagar, Chennai",
                 tags=["india", "salon"],
                 services=anna_nagar_services,
@@ -170,6 +226,95 @@ class MasterDataRepository:
                 location="Adyar, Chennai",
                 tags=["india", "spa"],
                 services=adayar_services,
+            )
+        )
+
+        laundry_services = [
+            ServiceRecord(
+                service_id=401,
+                name="Express Wash & Fold",
+                category="laundry",
+                duration_minutes=180,
+                price=18.0,
+            ),
+            ServiceRecord(
+                service_id=402,
+                name="Dry Cleaning",
+                category="laundry",
+                duration_minutes=240,
+                price=26.0,
+            ),
+        ]
+
+        takeaway_services = [
+            ServiceRecord(
+                service_id=501,
+                name="Family Combo Meal",
+                category="food",
+                duration_minutes=15,
+                price=32.0,
+            ),
+            ServiceRecord(
+                service_id=502,
+                name="Quick Lunch Bento",
+                category="food",
+                duration_minutes=10,
+                price=14.5,
+            ),
+            ServiceRecord(
+                service_id=503,
+                name="Takeaway Meal Pack",
+                category="food",
+                duration_minutes=12,
+                price=16.0,
+            ),
+        ]
+
+        turf_club_services = [
+            ServiceRecord(
+                service_id=601,
+                name="Evening Turf Rental",
+                category="sports",
+                duration_minutes=120,
+                price=120.0,
+            ),
+            ServiceRecord(
+                service_id=602,
+                name="Weekend Coaching Clinic",
+                category="sports",
+                duration_minutes=90,
+                price=75.0,
+            ),
+        ]
+
+        self.add_business(
+            BusinessRecord(
+                business_id=1004,
+                slug="freshfold-laundry",
+                name="FreshFold Laundry",
+                location="Bukit Timah, Singapore",
+                tags=["laundry", "cleaning"],
+                services=laundry_services,
+            )
+        )
+        self.add_business(
+            BusinessRecord(
+                business_id=1005,
+                slug="quickbite-takeaway",
+                name="QuickBite Takeaway",
+                location="Toa Payoh, Singapore",
+                tags=["food", "takeaway"],
+                services=takeaway_services,
+            )
+        )
+        self.add_business(
+            BusinessRecord(
+                business_id=1006,
+                slug="greenfield-turf-club",
+                name="Greenfield Turf Club",
+                location="Serangoon, Singapore",
+                tags=["sports", "turf"],
+                services=turf_club_services,
             )
         )
 
@@ -278,11 +423,27 @@ class MasterDataRepository:
         self, business: BusinessRecord, query: str, limit: int
     ) -> List[ServiceSummary]:
         normalized = query.lower()
-        tokens = [token for token in normalized.split() if token and token not in {"just", "only", "a", "an", "the"}]
+        normalized_compact = normalized.replace(" ", "").replace("-", "")
+        tokens = [
+            token
+            for token in normalized.split()
+            if token and token not in {"just", "only", "a", "an", "the"}
+        ]
         matches = []
         for service in business.services:
             name_lower = service.name.lower()
             category_lower = service.category.lower()
+            name_compact = name_lower.replace(" ", "").replace("-", "")
+            category_compact = category_lower.replace(" ", "").replace("-", "")
+
+            if normalized_compact and (
+                normalized_compact in name_compact
+                or normalized_compact in category_compact
+                or name_compact in normalized_compact
+                or category_compact in normalized_compact
+            ):
+                matches.append(service)
+                continue
             if tokens:
                 if all(token in name_lower or token in category_lower for token in tokens):
                     matches.append(service)

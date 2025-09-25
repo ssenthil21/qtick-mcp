@@ -201,7 +201,7 @@ def test_business_search_returns_suggestions_for_multiple_matches() -> None:
     assert response.suggested_business_names is not None
     assert {
         "Chillbreeze Adayar",
-        "Chillbrezze Anna Nagar",
+        "Chillbreeze Anna Nagar",
         "Chillbreeze Orchard",
     } == set(response.suggested_business_names)
     assert response.message and "Multiple businesses" in response.message
@@ -220,7 +220,62 @@ def test_service_lookup_lists_businesses_for_service_only_query() -> None:
     assert response.service_matches is not None
     assert len(response.service_matches) >= 1
     business_names = {match.business.name for match in response.service_matches}
-    assert any("Chillbreeze" in name for name in business_names)
+    assert {
+        "Chillbreeze Orchard",
+        "Chillbreeze Anna Nagar",
+        "Chillbreeze Adayar",
+    }.issubset(business_names)
+    expected_keywords = {
+        "Chillbreeze Orchard": {"men's haircut", "baby haircut"},
+        "Chillbreeze Anna Nagar": {"men's haircut", "baby haircut"},
+        "Chillbreeze Adayar": {"men's haircut", "baby haircut"},
+    }
+    for match in response.service_matches:
+        if match.business.name not in business_names:
+            continue
+        names = {service.name.lower() for service in match.services}
+        assert any("haircut" in name for name in names)
+        for keyword in expected_keywords.get(match.business.name, set()):
+            assert any(keyword in name for name in names)
+
+
+def test_service_lookup_supports_new_business_categories() -> None:
+    client = MockLatencyClient()
+    service = BusinessDirectoryService(client)
+
+    laundry_response = asyncio.run(
+        service.lookup_service(ServiceLookupRequest(service_name="Laundry"))
+    )
+    assert laundry_response.business is not None
+    assert laundry_response.business.name == "FreshFold Laundry"
+    assert laundry_response.matches is not None
+    assert any(
+        service.name.lower().startswith("express") or "laundry" in service.category.lower()
+        for service in laundry_response.matches
+    )
+
+    takeaway_response = asyncio.run(
+        service.lookup_service(
+            ServiceLookupRequest(service_name="Food Take Away")
+        )
+    )
+    assert takeaway_response.business is not None
+    assert takeaway_response.business.name == "QuickBite Takeaway"
+    assert takeaway_response.matches is not None
+    assert any(
+        "takeaway" in service.name.lower() for service in takeaway_response.matches
+    )
+
+    turf_response = asyncio.run(
+        service.lookup_service(ServiceLookupRequest(service_name="Turf"))
+    )
+    assert turf_response.business is not None
+    assert turf_response.business.name == "Greenfield Turf Club"
+    assert turf_response.matches is not None
+    assert any(
+        "turf" in service.name.lower() or "sports" in service.category.lower()
+        for service in turf_response.matches
+    )
 
 
 def test_mark_invoice_paid_triggers_review_request() -> None:
@@ -414,10 +469,28 @@ def test_business_directory_search_and_lookup() -> None:
 
     assert search_response.total >= 3
     names = {item.name for item in search_response.items}
-    assert "Chillbrezze Anna Nagar" in names
+    assert "Chillbreeze Anna Nagar" in names
     assert "Chillbreeze Adayar" in names
     assert search_response.message is not None
     assert "Multiple businesses" in search_response.message
+
+    laundry_search = asyncio.run(
+        service.search(BusinessSearchRequest(query="laundry", limit=5))
+    )
+    assert laundry_search.total >= 1
+    assert any(item.name == "FreshFold Laundry" for item in laundry_search.items)
+
+    takeaway_search = asyncio.run(
+        service.search(BusinessSearchRequest(query="takeaway", limit=5))
+    )
+    assert takeaway_search.total >= 1
+    assert any(item.name == "QuickBite Takeaway" for item in takeaway_search.items)
+
+    turf_search = asyncio.run(
+        service.search(BusinessSearchRequest(query="turf", limit=5))
+    )
+    assert turf_search.total >= 1
+    assert any(item.name == "Greenfield Turf Club" for item in turf_search.items)
 
     lookup_request = ServiceLookupRequest(
         business_name="Chillbreeze",
