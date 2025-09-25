@@ -309,6 +309,58 @@ def _summarize_service_lookup(output: Dict[str, Any]) -> List[Dict[str, Any]]:
             if match_payload:
                 matches_payload.append(match_payload)
 
+    service_match_groups: List[Dict[str, Any]] = []
+    for group in output.get("service_matches") or []:
+        if isinstance(group, dict):
+            business_info = group.get("business")
+            services = group.get("services") or []
+            business_payload = None
+            if isinstance(business_info, dict):
+                business_payload = _strip_nones(
+                    {
+                        "businessId": business_info.get("business_id"),
+                        "name": business_info.get("name"),
+                        "location": business_info.get("location"),
+                        "tags": business_info.get("tags"),
+                    }
+                )
+            services_payload: List[Dict[str, Any]] = []
+            for item in services:
+                if isinstance(item, dict):
+                    service_payload = _strip_nones(
+                        {
+                            "serviceId": item.get("service_id"),
+                            "name": item.get("name"),
+                            "category": item.get("category"),
+                            "durationMinutes": item.get("duration_minutes"),
+                            "price": item.get("price"),
+                        }
+                    )
+                    if service_payload:
+                        services_payload.append(service_payload)
+            payload = _strip_nones(
+                {
+                    "business": business_payload,
+                    "services": services_payload or None,
+                }
+            )
+            if payload:
+                service_match_groups.append(payload)
+
+    business_candidates_payload: List[Dict[str, Any]] = []
+    for candidate in output.get("business_candidates") or []:
+        if isinstance(candidate, dict):
+            candidate_payload = _strip_nones(
+                {
+                    "businessId": candidate.get("business_id"),
+                    "name": candidate.get("name"),
+                    "location": candidate.get("location"),
+                    "tags": candidate.get("tags"),
+                }
+            )
+            if candidate_payload:
+                business_candidates_payload.append(candidate_payload)
+
     exact_match_payload: Optional[Dict[str, Any]] = None
     exact_match = output.get("exact_match")
     if isinstance(exact_match, dict):
@@ -329,11 +381,21 @@ def _summarize_service_lookup(output: Dict[str, Any]) -> List[Dict[str, Any]]:
             "matches": matches_payload or None,
             "exactMatch": exact_match_payload,
             "message": output.get("message"),
+            "businessCandidates": business_candidates_payload or None,
+            "serviceMatches": service_match_groups or None,
+            "suggestedServices": output.get("suggested_service_names"),
         }
     )
 
     if matches_payload:
         summary["matches"] = matches_payload
+    if business_candidates_payload:
+        summary["businessCandidates"] = business_candidates_payload
+    if service_match_groups:
+        summary["serviceMatches"] = service_match_groups
+    suggestions = output.get("suggested_service_names")
+    if suggestions:
+        summary["suggestedServices"] = suggestions
 
     return [summary] if summary else []
 

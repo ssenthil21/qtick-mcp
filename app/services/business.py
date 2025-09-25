@@ -81,12 +81,18 @@ class BusinessDirectoryService:
                         if exact
                         else "Found one business with related services."
                     )
+                    suggested_names = (
+                        [match.name for match in matches]
+                        if len(matches) > 1
+                        else None
+                    )
                     return ServiceLookupResponse(
                         query=request.service_name,
                         business=business_summary,
                         matches=matches,
                         exact_match=exact,
                         message=message,
+                        suggested_service_names=suggested_names,
                     )
 
                 groups = [
@@ -96,11 +102,19 @@ class BusinessDirectoryService:
                 message = (
                     "Multiple businesses offer this service. Please choose the intended business."
                 )
+                suggested_names = sorted(
+                    {
+                        service.name
+                        for _, matches in grouped
+                        for service in matches
+                    }
+                )
                 return ServiceLookupResponse(
                     query=request.service_name,
                     business_candidates=[group.business for group in groups],
                     service_matches=groups,
                     message=message,
+                    suggested_service_names=suggested_names or None,
                 )
 
             business_record = None
@@ -182,12 +196,17 @@ class BusinessDirectoryService:
                 tags=list(business_record.tags),
             )
 
+            suggested_names = (
+                [match.name for match in matches] if len(matches) > 1 else None
+            )
+
             return ServiceLookupResponse(
                 query=request.service_name,
                 business=business_summary,
                 matches=matches,
                 exact_match=exact,
                 message=message,
+                suggested_service_names=suggested_names,
             )
 
         raise ServiceError("Service lookup is not available in live mode yet")

@@ -64,3 +64,4 @@ class ServiceLookupResponse(BaseModel):
     message: Optional[str] = None
     business_candidates: Optional[List[BusinessSummary]] = None
     service_matches: Optional[List[BusinessServiceMatch]] = None
+    suggested_service_names: Optional[List[str]] = None
