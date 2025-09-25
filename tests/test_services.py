@@ -37,6 +37,7 @@ LEADS_BUSINESS_ID = 5555
 REMOTE_BUSINESS_ID = 9999
 INVOICE_BUSINESS_ID = 3210
 SEED_CHILLBREEZE_ID = 1001
+ADAYAR_BUSINESS_ID = 1003
 REPORT_BUSINESS_ID = 5678
 
 
@@ -175,6 +176,127 @@ def test_mock_invoice_and_analytics_use_shared_store() -> None:
 
     assert analytics_response.footfall == 2
     assert analytics_response.revenue == "SGD 164.80"
+
+
+def test_analytics_reports_top_services_for_chillbreeze_adayar() -> None:
+    client = MockLatencyClient()
+    appointments = AppointmentService(client)
+    invoices = InvoiceService(client)
+    leads = LeadService(client)
+    analytics = AnalyticsService(client)
+
+    business_id = ADAYAR_BUSINESS_ID
+
+    booking_inputs = [
+        ("Casey", 303, "2025-09-08T10:00:00+08:00"),
+        ("Morgan", 303, "2025-09-08T11:30:00+08:00"),
+        ("Riley", 302, "2025-09-09T09:15:00+08:00"),
+    ]
+    for customer_name, service_id, dt in booking_inputs:
+        asyncio.run(
+            appointments.book(
+                AppointmentRequest(
+                    business_id=business_id,
+                    customer_name=customer_name,
+                    service_id=service_id,
+                    datetime=dt,
+                )
+            )
+        )
+
+    invoice_requests = [
+        InvoiceRequest(
+            business_id=business_id,
+            customer_name="Taylor",
+            items=[
+                LineItem(
+                    description="Soothing Head Massage",
+                    quantity=2,
+                    unit_price=42.0,
+                    tax_rate=0.08,
+                    service_id=302,
+                )
+            ],
+            currency="SGD",
+        ),
+        InvoiceRequest(
+            business_id=business_id,
+            customer_name="Jordan",
+            items=[
+                LineItem(
+                    description="Men's Haircut",
+                    quantity=1,
+                    unit_price=34.0,
+                    tax_rate=0.08,
+                    service_id=303,
+                )
+            ],
+            currency="SGD",
+        ),
+    ]
+
+    for request in invoice_requests:
+        asyncio.run(invoices.create(request))
+
+    lead_requests = [
+        LeadCreateRequest(
+            business_id=business_id,
+            name="Asha",  # walk-in by default
+            source="walk-in",
+        ),
+        LeadCreateRequest(
+            business_id=business_id,
+            name="Deepak",
+            source="instagram",
+        ),
+    ]
+
+    for request in lead_requests:
+        asyncio.run(leads.create(request))
+
+    analytics_request = AnalyticsRequest(
+        business_id=business_id,
+        metrics=["footfall", "revenue", "top_services"],
+        period="monthly",
+    )
+    analytics_response = asyncio.run(analytics.generate_report(analytics_request))
+
+    assert analytics_response.footfall == 3
+
+    top_service = analytics_response.top_appointment_service
+    assert top_service is not None
+    assert top_service.service_id == 303
+    assert top_service.name == "Men's Haircut"
+    assert top_service.booking_count == 2
+
+    highest_revenue = analytics_response.highest_revenue_service
+    assert highest_revenue is not None
+    assert highest_revenue.service_id == 302
+    assert highest_revenue.name == "Soothing Head Massage"
+    assert highest_revenue.currency == "SGD"
+    assert highest_revenue.total_revenue == pytest.approx(90.72)
+
+    appointment_summary = analytics_response.appointment_summary
+    assert appointment_summary is not None
+    assert appointment_summary.total == 3
+    assert appointment_summary.by_status == {"confirmed": 3}
+    assert appointment_summary.unique_customers == 3
+
+    invoice_summary = analytics_response.invoice_summary
+    assert invoice_summary is not None
+    assert invoice_summary.total == 2
+    assert invoice_summary.by_status == {"created": 2}
+    assert invoice_summary.total_revenue == pytest.approx(127.44)
+    assert invoice_summary.outstanding_total == pytest.approx(127.44)
+    assert invoice_summary.paid_total == pytest.approx(0.0)
+    assert invoice_summary.average_invoice_value == pytest.approx(63.72)
+    assert invoice_summary.unique_customers == 2
+
+    lead_summary = analytics_response.lead_summary
+    assert lead_summary is not None
+    assert lead_summary.total == 2
+    assert lead_summary.by_status == {"new": 2}
+    assert lead_summary.source_breakdown == {"instagram": 1, "walk-in": 1}
 
 
 def test_service_lookup_returns_candidates_when_business_name_ambiguous() -> None:

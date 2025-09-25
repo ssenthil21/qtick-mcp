@@ -227,6 +227,7 @@ class LineItemInput(BaseModel):
     unit_price: Optional[float] = None
     price: Optional[float] = None
     tax_rate: float = 0.0
+    service_id: Optional[int] = None
 
     @model_validator(mode="after")
     def ensure_unit_price(cls, model: "LineItemInput") -> "LineItemInput":
@@ -247,13 +248,16 @@ class InvoiceCreateInput(BaseModel):
 def _invoice_create(business_id: int, customer_name: str, items: List[LineItemInput], currency: str = "SGD", appointment_id: Optional[str] = None, notes: Optional[str] = None):
     norm_items = []
     for i in items:
-        norm_items.append({
+        normalized = {
             "item_id": i.item_id,
             "description": i.description,
             "quantity": i.quantity,
             "unit_price": i.unit_price if i.unit_price is not None else i.price,
             "tax_rate": i.tax_rate
-        })
+        }
+        if i.service_id is not None:
+            normalized["service_id"] = i.service_id
+        norm_items.append(normalized)
     payload = {"business_id": business_id, "customer_name": customer_name, "items": norm_items, "currency": currency, "appointment_id": appointment_id, "notes": notes}
     return _post_tool("/tools/invoice/create", payload)
 
@@ -344,7 +348,10 @@ def _analytics_report(business_id: int, metrics: List[str], period: str):
 def analytics_tool():
     return StructuredTool.from_function(
         name="analytics_report",
-        description="Fetch analytics for a business for a period.",
+        description=(
+            "Fetch analytics for a business including appointment, invoice, and "
+            "lead breakdowns for a period."
+        ),
         func=_analytics_report,
         args_schema=AnalyticsInput,
     )

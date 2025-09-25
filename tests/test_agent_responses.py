@@ -173,3 +173,71 @@ def test_summarize_business_search_returns_options() -> None:
 
     message = data_points[3]
     assert message["message"].startswith("Multiple businesses match")
+
+
+def test_summarize_analytics_includes_service_insights() -> None:
+    _, data_points = summarize_tool_result(
+        "analytics_report",
+        None,
+        {
+            "footfall": 42,
+            "revenue": "SGD 1,234.00",
+            "report_generated_at": "2025-09-07T00:00:00+00:00",
+            "top_appointment_service": {
+                "service_id": 303,
+                "name": "Men's Haircut",
+                "booking_count": 12,
+            },
+            "highest_revenue_service": {
+                "service_id": 302,
+                "name": "Soothing Head Massage",
+                "total_revenue": 540.0,
+                "currency": "SGD",
+            },
+            "appointment_summary": {
+                "total": 18,
+                "by_status": {"confirmed": 16, "cancelled": 2},
+                "unique_customers": 14,
+            },
+            "invoice_summary": {
+                "total": 20,
+                "by_status": {"paid": 15, "created": 5},
+                "total_revenue": 3250.0,
+                "paid_total": 2875.0,
+                "outstanding_total": 375.0,
+                "average_invoice_value": 162.5,
+                "currency": "SGD",
+                "unique_customers": 12,
+            },
+            "lead_summary": {
+                "total": 9,
+                "by_status": {"new": 7, "contacted": 2},
+                "source_breakdown": {
+                    "instagram": 4,
+                    "referral": 3,
+                    "walk-in": 2,
+                },
+            },
+        },
+    )
+
+    assert len(data_points) == 1
+    payload = data_points[0]
+    top_service = payload["topAppointmentService"]
+    assert top_service["serviceId"] == 303
+    assert top_service["bookingCount"] == 12
+    highest = payload["highestRevenueService"]
+    assert highest["name"] == "Soothing Head Massage"
+    assert highest["totalRevenue"] == 540.0
+    appointment_summary = payload["appointmentSummary"]
+    assert appointment_summary["total"] == 18
+    assert appointment_summary["byStatus"]["confirmed"] == 16
+    assert appointment_summary["uniqueCustomers"] == 14
+    invoice_summary = payload["invoiceSummary"]
+    assert invoice_summary["totalRevenue"] == 3250.0
+    assert invoice_summary["outstandingTotal"] == 375.0
+    assert invoice_summary["uniqueCustomers"] == 12
+    lead_summary = payload["leadSummary"]
+    assert lead_summary["total"] == 9
+    assert lead_summary["byStatus"]["new"] == 7
+    assert lead_summary["sourceBreakdown"]["instagram"] == 4
