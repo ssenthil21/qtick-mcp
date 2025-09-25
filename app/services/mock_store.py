@@ -1,12 +1,20 @@
 from __future__ import annotations
 
 import itertools
-from collections import defaultdict
+from collections import Counter, defaultdict
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import DefaultDict, Dict, Iterable, List, Optional
 
-from app.schemas.analytics import AnalyticsRequest, AnalyticsResponse
+from app.schemas.analytics import (
+    AnalyticsRequest,
+    AnalyticsResponse,
+    AppointmentAnalytics,
+    InvoiceAnalytics,
+    LeadAnalytics,
+    ServiceBookingSummary,
+    ServiceRevenueSummary,
+)
 from app.schemas.appointment import (
     AppointmentListRequest,
     AppointmentListResponse,
@@ -652,15 +660,33 @@ class InvoiceRepository(_BaseRepository):
 
     async def create(self, request: InvoiceRequest) -> InvoiceResponse:
         total = 0.0
+        normalized_items: List[Dict[str, object]] = []
         for item in request.items:
             unit_price = getattr(item, "unit_price", None)
             if unit_price is None:
                 unit_price = getattr(item, "price", None)
             if unit_price is None:
                 unit_price = 0.0
-            line_total = float(item.quantity) * float(unit_price)
-            line_total *= 1.0 + float(item.tax_rate)
+            quantity = float(item.quantity)
+            tax_rate = float(item.tax_rate)
+            line_total = quantity * float(unit_price)
+            line_total *= 1.0 + tax_rate
             total += line_total
+
+            normalized: Dict[str, object] = {
+                "description": item.description,
+                "quantity": item.quantity,
+                "unit_price": float(unit_price),
+                "tax_rate": tax_rate,
+            }
+            service_id = getattr(item, "service_id", None)
+            if service_id is not None:
+                normalized["service_id"] = int(service_id)
+            item_id = getattr(item, "item_id", None)
+            if item_id is not None:
+                normalized["item_id"] = item_id
+            normalized_items.append(normalized)
+
         total = round(total, 2)
 
         invoice_id = self._next_id()
@@ -674,6 +700,7 @@ class InvoiceRepository(_BaseRepository):
             "payment_link": f"https://pay.qtick.co/{invoice_id}",
             "status": "created",
             "customer_name": request.customer_name,
+            "items": normalized_items,
         }
         self._invoices[invoice_id] = record
         return InvoiceResponse(
@@ -858,11 +885,15 @@ class CampaignRepository(_BaseRepository):
 class AnalyticsRepository:
     def __init__(
         self,
+        master_data: MasterDataRepository,
         appointment_repository: AppointmentRepository,
         invoice_repository: InvoiceRepository,
+        lead_repository: "LeadRepository" | None = None,
     ) -> None:
+        self._master_data = master_data
         self._appointments = appointment_repository
         self._invoices = invoice_repository
+        self._leads = lead_repository
 
     async def generate_report(self, request: AnalyticsRequest) -> AnalyticsResponse:
         appointments = await self._appointments.list(
@@ -875,13 +906,231 @@ class AnalyticsRepository:
         footfall = appointments.total
 
         invoices = await self._invoices.list(request.business_id)
+        leads: List[Dict[str, object]] = []
+        if self._leads is not None:
+            leads = await self._leads.list(request.business_id)
         total_revenue = sum(float(invoice["total"]) for invoice in invoices)
         revenue_display = f"SGD {total_revenue:,.2f}"
+
+        top_service = self._top_appointment_service(
+            request.business_id, appointments.items
+        )
+        highest_revenue_service = self._highest_revenue_service(
+            request.business_id, invoices
+        )
+
+        appointment_summary = self._appointment_summary(appointments.items)
+        invoice_summary = self._invoice_summary(invoices)
+        lead_summary = self._lead_summary(leads)
 
         return AnalyticsResponse(
             footfall=footfall,
             revenue=revenue_display,
             report_generated_at=_utc_now_iso(),
+            top_appointment_service=top_service,
+            highest_revenue_service=highest_revenue_service,
+            appointment_summary=appointment_summary,
+            invoice_summary=invoice_summary,
+            lead_summary=lead_summary,
+        )
+
+    def _get_business_record(self, business_id: int) -> Optional[BusinessRecord]:
+        return self._master_data.get_business(business_id)
+
+    def _lookup_service_name(self, business_id: int, service_id: int) -> Optional[str]:
+        record = self._get_business_record(business_id)
+        if not record:
+            return None
+        for service in record.services:
+            if service.service_id == service_id:
+                return service.name
+        return None
+
+    def _match_service_by_description(
+        self, business_id: int, description: str
+    ) -> Optional[ServiceSummary]:
+        record = self._get_business_record(business_id)
+        if not record or not description:
+            return None
+        matches = self._master_data.find_services(record, description, 1)
+        return matches[0] if matches else None
+
+    def _top_appointment_service(
+        self, business_id: int, appointments: Iterable[AppointmentSummary]
+    ) -> Optional[ServiceBookingSummary]:
+        counts: Counter[int] = Counter()
+        for item in appointments:
+            service_id = getattr(item, "service_id", None)
+            if service_id is None:
+                continue
+            counts[int(service_id)] += 1
+
+        if not counts:
+            return None
+
+        top_service_id, top_count = max(
+            counts.items(), key=lambda entry: (entry[1], -entry[0])
+        )
+        name = self._lookup_service_name(business_id, top_service_id)
+        if not name:
+            name = f"Service {top_service_id}"
+        return ServiceBookingSummary(
+            service_id=top_service_id,
+            name=name,
+            booking_count=top_count,
+        )
+
+    def _highest_revenue_service(
+        self, business_id: int, invoices: Iterable[Dict[str, object]]
+    ) -> Optional[ServiceRevenueSummary]:
+        aggregates: Dict[tuple[Optional[int], str], Dict[str, object]] = {}
+
+        for invoice in invoices:
+            currency = str(invoice.get("currency")) if invoice.get("currency") else None
+            items = invoice.get("items") or []
+            for item in items:
+                if not isinstance(item, dict):
+                    continue
+                raw_service_id = item.get("service_id")
+                service_id = int(raw_service_id) if raw_service_id is not None else None
+                description = str(item.get("description") or "").strip()
+
+                matched_name: Optional[str] = None
+                if service_id is not None:
+                    matched_name = self._lookup_service_name(business_id, service_id)
+                if not matched_name and description:
+                    match = self._match_service_by_description(business_id, description)
+                    if match:
+                        service_id = match.service_id
+                        matched_name = match.name
+
+                if not matched_name:
+                    matched_name = description or "Unknown service"
+
+                key = (service_id, matched_name.lower())
+                entry = aggregates.get(key)
+                if not entry:
+                    entry = {
+                        "service_id": service_id,
+                        "name": matched_name,
+                        "total": 0.0,
+                        "currency": currency,
+                    }
+                    aggregates[key] = entry
+                else:
+                    if entry["currency"] is None and currency:
+                        entry["currency"] = currency
+
+                unit_price = item.get("unit_price")
+                if unit_price is None:
+                    unit_price = item.get("price")
+                if unit_price is None:
+                    unit_price = 0.0
+                quantity = float(item.get("quantity", 0))
+                tax_rate = float(item.get("tax_rate", 0.0))
+                line_total = quantity * float(unit_price)
+                line_total *= 1.0 + tax_rate
+                entry["total"] += line_total
+
+        if not aggregates:
+            return None
+
+        top_entry = max(aggregates.values(), key=lambda entry: entry["total"])
+        currency = top_entry.get("currency") or "SGD"
+        return ServiceRevenueSummary(
+            service_id=top_entry.get("service_id"),
+            name=str(top_entry.get("name")),
+            total_revenue=round(float(top_entry.get("total", 0.0)), 2),
+            currency=str(currency),
+        )
+
+    @staticmethod
+    def _appointment_summary(
+        appointments: Iterable[AppointmentSummary],
+    ) -> Optional[AppointmentAnalytics]:
+        appointments_list = list(appointments)
+        if not appointments_list:
+            return None
+
+        status_counts: Counter[str] = Counter()
+        customers: set[str] = set()
+        for item in appointments_list:
+            status_counts[str(item.status).lower()] += 1
+            name = str(item.customer_name or "").strip()
+            if name:
+                customers.add(name.lower())
+
+        return AppointmentAnalytics(
+            total=len(appointments_list),
+            by_status=dict(sorted(status_counts.items())),
+            unique_customers=len(customers),
+        )
+
+    @staticmethod
+    def _invoice_summary(
+        invoices: Iterable[Dict[str, object]]
+    ) -> Optional[InvoiceAnalytics]:
+        invoices_list = list(invoices)
+        if not invoices_list:
+            return None
+
+        status_counts: Counter[str] = Counter()
+        customers: set[str] = set()
+        total_revenue = 0.0
+        paid_total = 0.0
+        currency_counter: Counter[str] = Counter()
+
+        for invoice in invoices_list:
+            status = str(invoice.get("status") or "unknown")
+            status_counts[status.lower()] += 1
+            currency = str(invoice.get("currency") or "SGD")
+            currency_counter[currency] += 1
+            total = float(invoice.get("total", 0.0))
+            total_revenue += total
+            if status.lower() == "paid":
+                paid_total += total
+
+            name = str(invoice.get("customer_name") or "").strip()
+            if name:
+                customers.add(name.lower())
+
+        outstanding_total = total_revenue - paid_total
+        total_revenue = round(total_revenue, 2)
+        paid_total = round(paid_total, 2)
+        outstanding_total = round(outstanding_total, 2)
+        average = round(total_revenue / len(invoices_list), 2)
+        currency = currency_counter.most_common(1)[0][0] if currency_counter else None
+
+        return InvoiceAnalytics(
+            total=len(invoices_list),
+            by_status=dict(sorted(status_counts.items())),
+            total_revenue=total_revenue,
+            paid_total=paid_total,
+            outstanding_total=outstanding_total,
+            average_invoice_value=average,
+            currency=currency,
+            unique_customers=len(customers),
+        )
+
+    @staticmethod
+    def _lead_summary(leads: Iterable[Dict[str, object]]) -> Optional[LeadAnalytics]:
+        leads_list = list(leads)
+        if not leads_list:
+            return None
+
+        status_counts: Counter[str] = Counter()
+        source_counts: Counter[str] = Counter()
+
+        for lead in leads_list:
+            status = str(lead.get("status") or "unknown")
+            status_counts[status.lower()] += 1
+            source = str(lead.get("source") or "unspecified")
+            source_counts[source.lower()] += 1
+
+        return LeadAnalytics(
+            total=len(leads_list),
+            by_status=dict(sorted(status_counts.items())),
+            source_breakdown=dict(sorted(source_counts.items())),
         )
 
 
@@ -908,7 +1157,7 @@ def get_mock_store() -> MockDataStore:
         invoices = InvoiceRepository(reviews)
         leads = LeadRepository()
         campaigns = CampaignRepository()
-        analytics = AnalyticsRepository(appointments, invoices)
+        analytics = AnalyticsRepository(master_data, appointments, invoices, leads)
         _mock_store = MockDataStore(
             master_data=master_data,
             appointments=appointments,

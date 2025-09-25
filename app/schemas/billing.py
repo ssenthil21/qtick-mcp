@@ -10,6 +10,7 @@ class LineItem(BaseModel):
     unit_price: Optional[float] = None  # primary
     price: Optional[float] = None       # alias accepted by API/tool layer
     tax_rate: float = 0.0               # e.g. 0.08 for 8%
+    service_id: Optional[int] = None    # optional reference to master data
 
 class InvoiceRequest(BaseModel):
     business_id: int

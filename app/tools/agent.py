@@ -414,13 +414,69 @@ def _summarize_campaign(output: Dict[str, Any], tool_input: Optional[Dict[str, A
 
 
 def _summarize_analytics(output: Dict[str, Any]) -> Dict[str, Any]:
-    return _strip_nones(
-        {
-            "footfall": output.get("footfall"),
-            "revenue": output.get("revenue"),
-            "reportGeneratedAt": output.get("report_generated_at"),
-        }
-    )
+    summary: Dict[str, Any] = {
+        "footfall": output.get("footfall"),
+        "revenue": output.get("revenue"),
+        "reportGeneratedAt": output.get("report_generated_at"),
+    }
+
+    top_service = output.get("top_appointment_service")
+    if isinstance(top_service, dict):
+        summary["topAppointmentService"] = _strip_nones(
+            {
+                "serviceId": top_service.get("service_id"),
+                "name": top_service.get("name"),
+                "bookingCount": top_service.get("booking_count"),
+            }
+        )
+
+    highest_revenue = output.get("highest_revenue_service")
+    if isinstance(highest_revenue, dict):
+        summary["highestRevenueService"] = _strip_nones(
+            {
+                "serviceId": highest_revenue.get("service_id"),
+                "name": highest_revenue.get("name"),
+                "totalRevenue": highest_revenue.get("total_revenue"),
+                "currency": highest_revenue.get("currency"),
+            }
+        )
+
+    appointment_summary = output.get("appointment_summary")
+    if isinstance(appointment_summary, dict):
+        summary["appointmentSummary"] = _strip_nones(
+            {
+                "total": appointment_summary.get("total"),
+                "byStatus": appointment_summary.get("by_status"),
+                "uniqueCustomers": appointment_summary.get("unique_customers"),
+            }
+        )
+
+    invoice_summary = output.get("invoice_summary")
+    if isinstance(invoice_summary, dict):
+        summary["invoiceSummary"] = _strip_nones(
+            {
+                "total": invoice_summary.get("total"),
+                "byStatus": invoice_summary.get("by_status"),
+                "totalRevenue": invoice_summary.get("total_revenue"),
+                "paidTotal": invoice_summary.get("paid_total"),
+                "outstandingTotal": invoice_summary.get("outstanding_total"),
+                "averageInvoiceValue": invoice_summary.get("average_invoice_value"),
+                "currency": invoice_summary.get("currency"),
+                "uniqueCustomers": invoice_summary.get("unique_customers"),
+            }
+        )
+
+    lead_summary = output.get("lead_summary")
+    if isinstance(lead_summary, dict):
+        summary["leadSummary"] = _strip_nones(
+            {
+                "total": lead_summary.get("total"),
+                "byStatus": lead_summary.get("by_status"),
+                "sourceBreakdown": lead_summary.get("source_breakdown"),
+            }
+        )
+
+    return _strip_nones(summary)
 
 
 def _summarize_datetime(output: Dict[str, Any]) -> Dict[str, Any]:
