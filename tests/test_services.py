@@ -504,6 +504,23 @@ def test_business_directory_search_and_lookup() -> None:
     assert lookup_response.message is not None
     assert "Multiple businesses matched" in lookup_response.message
 
+    direct_lookup = asyncio.run(
+        service.lookup_service(
+            ServiceLookupRequest(
+                business_id=SEED_CHILLBREEZE_ID,
+                service_name="haircut",
+            )
+        )
+    )
+    assert direct_lookup.business is not None
+    assert direct_lookup.business.business_id == SEED_CHILLBREEZE_ID
+    assert direct_lookup.suggested_service_names is not None
+    assert len(direct_lookup.suggested_service_names) > 1
+    assert all(
+        isinstance(name, str) and name
+        for name in direct_lookup.suggested_service_names
+    )
+
 
 def test_haircut_lookup_with_space_prompts_for_specific_service() -> None:
     client = MockLatencyClient()

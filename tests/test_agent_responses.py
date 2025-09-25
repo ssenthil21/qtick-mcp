@@ -124,6 +124,7 @@ def test_summarize_service_lookup_groups_matches() -> None:
                 },
             ],
             "message": "Multiple services matched your search.",
+            "suggested_service_names": ["Signature Haircut", "Kids Haircut"],
         },
     )
 
@@ -134,6 +135,7 @@ def test_summarize_service_lookup_groups_matches() -> None:
     assert len(payload["matches"]) == 2
     assert payload["matches"][0]["serviceId"] == 101
     assert payload["message"].startswith("Multiple services")
+    assert payload["suggestedServices"] == ["Signature Haircut", "Kids Haircut"]
 
 
 def test_summarize_business_search_returns_options() -> None:
