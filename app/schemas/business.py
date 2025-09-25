@@ -23,6 +23,8 @@ class BusinessSearchResponse(BaseModel):
     query: str
     total: int
     items: List[BusinessSummary]
+    message: Optional[str] = None
+    suggested_business_names: Optional[List[str]] = None
 
 
 class ServiceSummary(BaseModel):

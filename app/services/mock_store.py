@@ -241,7 +241,38 @@ class MasterDataRepository:
             self._summary_from_record(record)
             for record in matches[:limit]
         ]
-        return BusinessSearchResponse(query=query, total=len(matches), items=items)
+
+        total = len(matches)
+        message: Optional[str] = None
+        suggested_business_names: Optional[List[str]] = None
+        if total == 0:
+            message = "No businesses matched your search."
+        elif total > 1:
+            suggested_business_names = [summary.name for summary in items]
+            option_descriptions = "; ".join(
+                (
+                    f"{summary.name} ({summary.location})"
+                    if summary.location
+                    else summary.name
+                )
+                for summary in items
+            )
+            message = (
+                "Multiple businesses match your search. Please specify the location or "
+                "use the business id."
+            )
+            if option_descriptions:
+                message = f"{message} Options: {option_descriptions}."
+        elif total == 1:
+            suggested_business_names = [items[0].name]
+
+        return BusinessSearchResponse(
+            query=query,
+            total=total,
+            items=items,
+            message=message,
+            suggested_business_names=suggested_business_names,
+        )
 
     def find_services(
         self, business: BusinessRecord, query: str, limit: int

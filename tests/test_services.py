@@ -190,6 +190,25 @@ def test_service_lookup_returns_candidates_when_business_name_ambiguous() -> Non
     assert response.message and "Multiple businesses" in response.message
 
 
+def test_business_search_returns_suggestions_for_multiple_matches() -> None:
+    client = MockLatencyClient()
+    service = BusinessDirectoryService(client)
+
+    request = BusinessSearchRequest(query="Chillbreeze")
+    response = asyncio.run(service.search(request))
+
+    assert response.total == 3
+    assert response.suggested_business_names is not None
+    assert {
+        "Chillbreeze Adayar",
+        "Chillbrezze Anna Nagar",
+        "Chillbreeze Orchard",
+    } == set(response.suggested_business_names)
+    assert response.message and "Multiple businesses" in response.message
+    for name in response.suggested_business_names:
+        assert name in response.message
+
+
 def test_service_lookup_lists_businesses_for_service_only_query() -> None:
     client = MockLatencyClient()
     service = BusinessDirectoryService(client)
@@ -397,6 +416,8 @@ def test_business_directory_search_and_lookup() -> None:
     names = {item.name for item in search_response.items}
     assert "Chillbrezze Anna Nagar" in names
     assert "Chillbreeze Adayar" in names
+    assert search_response.message is not None
+    assert "Multiple businesses" in search_response.message
 
     lookup_request = ServiceLookupRequest(
         business_name="Chillbreeze",
