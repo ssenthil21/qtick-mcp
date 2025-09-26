@@ -47,9 +47,12 @@ _TOOL_DISPLAY_NAMES: Dict[str, str] = {
     "datetime_parse": "Datetime",
 }
 
-
 def _cache_key(settings: Settings) -> Tuple[str, str, float]:
-    return (str(settings.mcp_base_url), settings.agent_google_model, settings.agent_temperature)
+    return (
+        str(settings.mcp_base_url),
+        settings.agent_google_model,
+        settings.agent_temperature,
+    )
 
 
 def _build_tools() -> List:
@@ -531,18 +534,21 @@ def summarize_tool_result(
     return display_name, data_points
 
 
-@lru_cache(maxsize=1)
-def _get_agent_bundle(cache_key: Tuple[str, str, float]):
-    settings = get_settings()
-    configure(
-        base_url=str(settings.mcp_base_url), timeout=settings.agent_tool_timeout
-    )
+def _build_llm(model_name: str, temperature: float, settings: Settings):
     if settings.google_api_key:
         os.environ.setdefault("GOOGLE_API_KEY", settings.google_api_key)
     elif not os.getenv("GOOGLE_API_KEY"):
         raise HTTPException(status_code=500, detail="GOOGLE_API_KEY not set on server")
 
-    llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash", temperature=0)
+    return ChatGoogleGenerativeAI(model=model_name, temperature=temperature)
+
+
+@lru_cache(maxsize=1)
+def _get_agent_bundle(cache_key: Tuple[str, str, float]):
+    base_url, model_name, temperature = cache_key
+    settings = get_settings()
+    configure(base_url=base_url, timeout=settings.agent_tool_timeout)
+    llm = _build_llm(model_name, temperature, settings)
     tools = _build_tools()
     agent = initialize_agent(
         tools=tools,

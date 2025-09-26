@@ -25,7 +25,7 @@ def runtime_default_mcp_base_url() -> str:
 class Settings(BaseSettings):
     """Application configuration loaded from environment variables."""
 
-    app_name: str = Field(default="QTick MCP Service", alias="APP_NAME")
+    app_name: str = Field(default="QTick MCP Service")
     cors_origins: List[AnyHttpUrl] = Field(
         default_factory=lambda: [
             "http://localhost:5500",
@@ -35,17 +35,29 @@ class Settings(BaseSettings):
         ]
     )
     java_service_base_url: AnyHttpUrl | None = Field(
-        default=None, alias="JAVA_SERVICE_BASE_URL"
+        default=None
     )
-    java_service_timeout: float = Field(default=10.0, alias="JAVA_SERVICE_TIMEOUT")
-    use_mock_data: bool = Field(default=True, alias="USE_MOCK_DATA")
-    google_api_key: str | None = Field(default=None, alias="GOOGLE_API_KEY")
-    agent_google_model: str = Field(default="gemini-1.5-flash", alias="AGENT_GOOGLE_MODEL")
-    agent_temperature: float = Field(default=0.0, alias="AGENT_TEMPERATURE")
+    java_service_timeout: float = Field(
+        default=10.0
+    )
+    use_mock_data: bool = Field(
+        default=True
+    )
+    google_api_key: str | None = Field(
+        default=None
+    )
+    agent_google_model: str = Field(
+        default="gemini-1.5-flash"
+    )
+    agent_temperature: float = Field(
+        default=0.0
+    )
     mcp_base_url: AnyHttpUrl = Field(
-        default_factory=runtime_default_mcp_base_url, alias="MCP_BASE_URL"
+        default_factory=runtime_default_mcp_base_url
     )
-    agent_tool_timeout: float = Field(default=30.0, alias="AGENT_TOOL_TIMEOUT")
+    agent_tool_timeout: float = Field(
+        default=30.0
+    )
 
     model_config = SettingsConfigDict(env_prefix="QTICK_", case_sensitive=False)
 
@@ -54,7 +66,6 @@ class Settings(BaseSettings):
         if isinstance(value, str):
             return [origin.strip() for origin in value.split(",") if origin.strip()]
         return value
-
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
