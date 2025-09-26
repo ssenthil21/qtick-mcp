@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.routing import Mount
 
 from app.config import get_settings
 from app.dependencies.services import get_java_client_cached
@@ -19,15 +20,17 @@ from app.tools.leads import router as leads_router
 from app.tools.live_ops import router as live_ops_router
 from app.tools.mcp import router as mcp_router
 from app.mcp_server import mcp
-from starlette.routing import Mount
-from app.health import router as health_router 
+from app.health import router as health_router
 
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    settings = get_settings()
     client = get_java_client_cached()
+    has_mcp_mount = any(
+        isinstance(route, Mount) and route.path == "/mcp" for route in app.routes
+    )
+    print(f"[DEBUG] MCP mount present: {has_mcp_mount}")
     try:
         yield
     finally:
@@ -56,11 +59,5 @@ app.include_router(agent_router, prefix="/agent")
 app.include_router(mcp_router)  # Exposes /tools/list and /tools/call
 app.include_router(health_router)
 app.include_router(mock_data_router)
-app.mount("/mcp", mcp.streamable_http_app()) # Mount the MCP Streamable HTTP server at /mcp
-#app.mount("/sse", mcp.sse_app()) # add this line for local testing with the Anthropic MCP client:
-
-from starlette.routing import Mount
-@app.on_event("startup")
-async def _debug_routes():
-    has_mcp = any(isinstance(r, Mount) and r.path == "/mcp" for r in app.routes)
-    print(f"[DEBUG] MCP mount present: {has_mcp}")
+app.mount("/mcp", mcp.streamable_http_app())  # Mount the MCP Streamable HTTP server at /mcp
+# app.mount("/sse", mcp.sse_app()) # add this line for local testing with the Anthropic MCP client:
