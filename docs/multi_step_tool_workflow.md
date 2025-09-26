@@ -12,16 +12,16 @@ The sections below show how to make the workflow generic so the LLM can field pr
 
 ## 1. Catalogue the MCP tool schemas
 
-Start by cataloguing every data-bearing MCP tool that your agent can reach. QTick already exposes endpoints for the key business objects:
+Start by cataloguing every data-bearing MCP tool that your agent can reach. QTick already exposes endpoints for the key business objects and keeps the FastMCP function names aligned with the REST catalogue:
 
-| Object | Primary list tool | Key fields returned |
-| --- | --- | --- |
-| Appointment | `appointments_list` | `id`, `customer_name`, `service`, `start_time`, `status`【F:app/mcp_server.py†L13-L48】 |
-| Invoice | `invoice.list` (REST) | `invoice_id`, `customer_name`, `total`, `status`, `items`【F:app/tools/invoice.py†L17-L39】【F:app/services/invoice.py†L51-L71】 |
-| Lead | `leads.list` (REST) | `lead_id`, `name`, `phone`, `email`, `source`【F:app/tools/leads.py†L16-L33】 |
-| Review | `live_ops.events` summary | Events for review requests triggered by invoice payments, including `customer_name`, `status`, and timestamps【F:app/tools/mcp.py†L136-L189】【F:app/services/live_ops.py†L83-L184】 |
+| Object | FastMCP tool name | REST tool name | Key fields returned |
+| --- | --- | --- | --- |
+| Appointment | `appointments_list` | `appointments.list` (`/tools/appointment/list`) | `id`, `customer_name`, `service`, `start_time`, `status`【F:app/mcp_server.py†L13-L48】【F:app/tools/mcp.py†L45-L70】【F:app/tools/appointment.py†L15-L33】 |
+| Invoice | `invoice_create` (FastMCP currently exposes create) | `invoice.list` (`/tools/invoice/list`) | `invoice_id`, `customer_name`, `total`, `status`, `items`【F:app/mcp_server.py†L60-L103】【F:app/tools/mcp.py†L81-L117】【F:app/tools/invoice.py†L17-L39】【F:app/services/invoice.py†L51-L71】 |
+| Lead | `leads_create` (FastMCP currently exposes create) | `leads.list` (`/tools/leads/list`) | `lead_id`, `name`, `phone`, `email`, `source`【F:app/mcp_server.py†L104-L108】【F:app/tools/mcp.py†L118-L146】【F:app/tools/leads.py†L16-L33】 |
+| Review | *(Planned FastMCP surface via live ops)* | `live_ops.events` (`/tools/live-ops/events`) | Events for review requests triggered by invoice payments, including `customer_name`, `status`, and timestamps【F:app/tools/mcp.py†L147-L189】【F:app/tools/live_ops.py†L1-L18】【F:app/services/live_ops.py†L83-L184】 |
 
-> **Tip:** The MCP server also exposes create/update tools (e.g. `invoice_create`, `invoice.mark_paid`, `leads.create`) that enrich the schema definitions for downstream reasoning.【F:app/mcp_server.py†L50-L90】【F:app/tools/mcp.py†L92-L161】 Even if you only need read-only answers, inspecting these schemas tells the model which attributes exist.
+> **Tip:** The MCP server also exposes create/update tools (e.g. `invoice_create`, `invoice.mark_paid`, `leads_create`) that enrich the schema definitions for downstream reasoning.【F:app/mcp_server.py†L60-L108】【F:app/tools/mcp.py†L92-L143】 Even if you only need read-only answers, inspecting these schemas tells the model which attributes exist.
 
 Keep this catalogue close to your planner prompt so the LLM knows which tool to pick once it detects the business object mentioned in the user's query.
 
@@ -49,14 +49,16 @@ Feed those pieces into a dispatcher that knows which MCP tool arguments to popul
 
 ## 4. Example multi-entity controller
 
-The controller below demonstrates how to normalise intents, call the correct tool, and hand the structured rows back to the LLM. It uses a simple dispatcher so the same logic works for invoices, appointments, leads, or reviews:
+The controller below demonstrates how to normalise intents, call the correct tool, and hand the structured rows back to the LLM. It uses the SSE transport exposed by `app.main` so the same logic works for invoices, appointments, leads, or reviews regardless of whether you host the MCP server locally or remotely:
 
 ```python
 import asyncio
+from collections.abc import Awaitable, Callable
 from datetime import date
-from typing import Any, Callable, Dict
+from typing import Any, Dict, List
 
-from mcp.client import FastMCPClient
+from mcp.client.session import ClientSession
+from mcp.client.sse import sse_client
 
 
 def _date_range_for_today() -> Dict[str, str]:
@@ -66,22 +68,26 @@ def _date_range_for_today() -> Dict[str, str]:
 
 ENTITY_TOOL: Dict[str, Dict[str, Any]] = {
     "appointment": {
-        "name": "appointments_list",
+        "fastmcp": "appointments_list",
+        "rest": "appointments.list",
         "argument_builder": lambda business_id: {
             "business_id": business_id,
             **_date_range_for_today(),
         },
     },
     "invoice": {
-        "name": "invoice.list",
+        "fastmcp": "invoice_create",  # Until FastMCP ships `invoice_list`, use REST for reads.
+        "rest": "invoice.list",
         "argument_builder": lambda business_id: {"business_id": business_id},
     },
     "lead": {
-        "name": "leads.list",
+        "fastmcp": "leads_create",  # Until FastMCP ships `leads_list`, use REST for reads.
+        "rest": "leads.list",
         "argument_builder": lambda business_id: {"business_id": business_id},
     },
     "review": {
-        "name": "live_ops.events",
+        "fastmcp": None,
+        "rest": "live_ops.events",
         "argument_builder": lambda business_id: {
             "business_id": business_id,
             **_date_range_for_today(),
@@ -90,37 +96,81 @@ ENTITY_TOOL: Dict[str, Dict[str, Any]] = {
 }
 
 
+def _normalise_call_result(result: Any) -> Any:
+    """Flatten `CallToolResult.content` blocks into a Python object.
+
+    FastMCP returns the tool payload as a list of `Content` blocks. Each block
+    may expose `.json` or `.text` depending on the tool. This helper converts the
+    response into a single dict/list so the downstream summariser does not need
+    to understand MCP internals.
+    """
+
+    blocks: List[Any] = []
+    for block in getattr(result, "content", []) or []:
+        if getattr(block, "json", None) is not None:
+            blocks.append(block.json)
+        elif getattr(block, "text", None) is not None:
+            blocks.append(block.text)
+
+    if not blocks:
+        return {}
+    if len(blocks) == 1:
+        return blocks[0]
+    return blocks
+
+
 async def fetch_entity_rows(
-    client: FastMCPClient, business_id: int, entity: str
-) -> Dict[str, Any]:
+    session: ClientSession, business_id: int, entity: str
+) -> Any:
     descriptor = ENTITY_TOOL[entity]
     tool_args = descriptor["argument_builder"](business_id)
-    return await client.call_tool(descriptor["name"], tool_args)
+    tool_name = descriptor["fastmcp"]
+    try:
+        if tool_name:
+            result = await session.call_tool(tool_name, tool_args)
+        else:
+            raise ValueError("No FastMCP surface yet")
+    except Exception:
+        result = await session.call_tool(descriptor["rest"], tool_args)
+    return _normalise_call_result(result)
 
 
 async def answer_business_question(
-    client: FastMCPClient, business_id: int, entity: str, instruction: str
+    session: ClientSession,
+    completion_fn: Callable[[str], Awaitable[str]],
+    business_id: int,
+    entity: str,
+    instruction: str,
 ) -> str:
-    response_payload = await fetch_entity_rows(client, business_id, entity)
+    rows = await fetch_entity_rows(session, business_id, entity)
     summary_prompt = f"""
     You are the analyst for today's {entity}s. Follow the instruction strictly.
     Instruction: {instruction}
-    Data: {response_payload}
+    Data: {rows}
     Return the result as concise bullet points or tables when appropriate.
     """
-    return await client.ask_model(summary_prompt)
+    return await completion_fn(summary_prompt)
 
 
 async def run():
-    async with FastMCPClient("http://localhost:8000") as client:
-        print(
-            await answer_business_question(
-                client,
-                business_id=42,
-                entity="invoice",
-                instruction="From today's invoices tell me the highest paid service",
+    async with sse_client("http://localhost:8000/sse") as (reader, writer):
+        async with ClientSession(reader, writer) as session:
+            await session.initialize()
+
+            async def fake_completion(prompt: str) -> str:
+                # Replace with a call to your preferred LLM (OpenAI, Gemini, etc.).
+                print("LLM PROMPT", prompt)
+                return "<summary from LLM>"
+
+            print(
+                await answer_business_question(
+                    session,
+                    fake_completion,
+                    business_id=42,
+                    entity="invoice",
+                    instruction="From today's invoices tell me the highest paid service",
+                )
             )
-        )
 
 
 asyncio.run(run())
@@ -128,9 +178,10 @@ asyncio.run(run())
 
 Key ideas:
 
-1. **Tool call** – The dispatcher selects the right tool name and arguments based on the entity detected in the user query.
-2. **Stateful reasoning** – After receiving the JSON payload, you send the structured result back to the LLM (either as context or through a follow-up prompt) so it can finish the task.
-3. **Optional follow-up tools** – If attributes are missing (e.g., appointment rows do not include phone numbers), make an extra call such as `leads.list` before crafting the final answer.
+1. **Transport ready** – `sse_client` + `ClientSession` mirrors the harnesses in the repository so you can swap in stdio or TCP transports without rewriting controller logic.
+2. **Tool call** – The dispatcher selects the right tool name and arguments based on the entity detected in the user query and keeps FastMCP/REST names in sync.
+3. **Stateful reasoning** – After normalising the `CallToolResult`, send the structured result back to the LLM via a pluggable completion function so it can finish the task.
+4. **Optional follow-up tools** – If attributes are missing (e.g., appointment rows do not include phone numbers), make an extra call such as `leads.list` before crafting the final answer.
 
 ## 5. Teach the agent to iterate
 
