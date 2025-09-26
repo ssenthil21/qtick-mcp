@@ -15,18 +15,19 @@ The sections below show how to make the workflow generic so the LLM can field pr
 If you are wiring this flow into a new agent for the first time, work through the following high-level tasks. Each step links to
 the deeper guidance later in this document so you can iterate quickly:
 
-1. **Bootstrap an MCP client** – Instantiate `FastMCPClient` (or the LangChain wrapper) pointed at your QTick MCP server and
-   verify that `client.list_tools()` returns the expected endpoints. The repo includes an integration test harness you can copy
-   from `TEST_mcp_client.py` to validate basic connectivity.【F:TEST_mcp_client.py†L1-L34】
+1. **Bootstrap an MCP client** – Use `mcp.client.session.ClientSession` with either the SSE or Streamable HTTP transport pointed
+   at your QTick MCP server and verify that `session.list_tools()` returns the expected endpoints. The repo includes integration
+   test harnesses (`TEST_mcp_client.py`, `TEST_mcp_client_stream.py`, `TEST_mcp_client_sse.py`) that demonstrate both transports
+   and basic connectivity checks.【F:TEST_mcp_client.py†L1-L34】【F:TEST_mcp_client_stream.py†L1-L19】【F:TEST_mcp_client_sse.py†L1-L17】
 2. **Codify the tool catalogue** – Record the object → tool mapping shown below inside your planner prompt or controller so the
    model can resolve which tool to call for each entity (§1).
 3. **Implement intent parsing** – Translate user utterances into `(entity, instruction, filters)` tuples using your preferred
    NLP layer (§3). Start with keyword matching, then layer in LLM-based parsing once the basic loop works.
 4. **Build the dispatcher/controller** – Reuse or adapt the `ENTITY_TOOL` mapping and `fetch_entity_rows` helpers in §4 so you
    can issue tool calls with consistent arguments.
-5. **Add a reasoning loop** – After each tool call, feed the JSON payload back to the LLM (via `ask_model` or a higher-level
-   agent executor) and let it decide whether more data is needed (§5). Only once the model is satisfied should you stream the
-   final answer to the user.
+5. **Add a reasoning loop** – After each tool call, feed the JSON payload back to the LLM (via your completion API or a
+   higher-level agent executor) and let it decide whether more data is needed (§5). Only once the model is satisfied should you
+   stream the final answer to the user.
 6. **Test end-to-end** – Simulate prompts like "List me appointments for today and tell me the contact number" by driving the
    planner in a unit/integration test. The repository's `tests/` folder contains FastAPI + agent harnesses you can reuse to stub
    responses while you iterate.【F:tests/test_agent_run.py†L1-L94】
@@ -40,10 +41,10 @@ Start by cataloguing every data-bearing MCP tool that your agent can reach. QTic
 
 | Object | Primary list tool | Key fields returned |
 | --- | --- | --- |
-| Appointment | `appointments_list` | `id`, `customer_name`, `service`, `start_time`, `status`【F:app/mcp_server.py†L13-L48】 |
-| Invoice | `invoice.list` (REST) | `invoice_id`, `customer_name`, `total`, `status`, `items`【F:app/tools/invoice.py†L17-L39】【F:app/services/invoice.py†L51-L71】 |
-| Lead | `leads.list` (REST) | `lead_id`, `name`, `phone`, `email`, `source`【F:app/tools/leads.py†L16-L33】 |
-| Review | `live_ops.events` summary | Events for review requests triggered by invoice payments, including `customer_name`, `status`, and timestamps【F:app/tools/mcp.py†L136-L189】【F:app/services/live_ops.py†L83-L184】 |
+| Appointment | `appointments_list` (FastMCP) / `appointments.list` (REST) | `id`, `customer_name`, `service`, `start_time`, `status`【F:app/mcp_server.py†L13-L48】【F:app/tools/mcp.py†L44-L70】 |
+| Invoice | `invoice.list` | `invoice_id`, `customer_name`, `total`, `status`, `items`【F:app/tools/invoice.py†L17-L39】【F:app/services/invoice.py†L51-L71】【F:app/tools/mcp.py†L74-L110】 |
+| Lead | `leads.list` | `lead_id`, `name`, `phone`, `email`, `source`【F:app/tools/leads.py†L16-L33】【F:app/tools/mcp.py†L117-L146】 |
+| Review | `live_ops.events` summary | Events for review requests triggered by invoice payments, including `customer_name`, `status`, and timestamps【F:app/tools/mcp.py†L147-L198】【F:app/services/live_ops.py†L83-L184】 |
 
 > **Tip:** The MCP server also exposes create/update tools (e.g. `invoice_create`, `invoice.mark_paid`, `leads.create`) that enrich the schema definitions for downstream reasoning.【F:app/mcp_server.py†L50-L90】【F:app/tools/mcp.py†L92-L161】 Even if you only need read-only answers, inspecting these schemas tells the model which attributes exist.
 
@@ -77,10 +78,14 @@ The controller below demonstrates how to normalise intents, call the correct too
 
 ```python
 import asyncio
+import json
+from contextlib import asynccontextmanager
 from datetime import date
-from typing import Any, Callable, Dict
+from typing import Any, Awaitable, Callable, Dict
 
-from mcp.client import FastMCPClient
+from mcp.client.session import ClientSession
+from mcp.client.sse import sse_client
+from mcp.types import CallToolResult, TextContent
 
 
 def _date_range_for_today() -> Dict[str, str]:
@@ -90,7 +95,7 @@ def _date_range_for_today() -> Dict[str, str]:
 
 ENTITY_TOOL: Dict[str, Dict[str, Any]] = {
     "appointment": {
-        "name": "appointments_list",
+        "name": "appointments.list",
         "argument_builder": lambda business_id: {
             "business_id": business_id,
             **_date_range_for_today(),
@@ -114,35 +119,70 @@ ENTITY_TOOL: Dict[str, Dict[str, Any]] = {
 }
 
 
+def _result_to_payload(result: CallToolResult) -> Any:
+    """Prefer structuredContent; fall back to decoded text blocks."""
+
+    if result.structuredContent is not None:
+        return result.structuredContent
+
+    text_blocks = [block.text for block in result.content if isinstance(block, TextContent)]
+    if not text_blocks:
+        return result.model_dump()
+
+    try:
+        return json.loads(text_blocks[0])
+    except json.JSONDecodeError:
+        return text_blocks[0]
+
+
 async def fetch_entity_rows(
-    client: FastMCPClient, business_id: int, entity: str
-) -> Dict[str, Any]:
+    session: ClientSession, business_id: int, entity: str
+) -> Any:
     descriptor = ENTITY_TOOL[entity]
     tool_args = descriptor["argument_builder"](business_id)
-    return await client.call_tool(descriptor["name"], tool_args)
+    result = await session.call_tool(descriptor["name"], tool_args)
+    return _result_to_payload(result)
 
 
 async def answer_business_question(
-    client: FastMCPClient, business_id: int, entity: str, instruction: str
+    session: ClientSession,
+    business_id: int,
+    entity: str,
+    instruction: str,
+    *,
+    llm_complete: Callable[[str], Awaitable[str]],
 ) -> str:
-    response_payload = await fetch_entity_rows(client, business_id, entity)
+    rows = await fetch_entity_rows(session, business_id, entity)
     summary_prompt = f"""
-    You are the analyst for today's {entity}s. Follow the instruction strictly.
-    Instruction: {instruction}
-    Data: {response_payload}
-    Return the result as concise bullet points or tables when appropriate.
-    """
-    return await client.ask_model(summary_prompt)
+You are the analyst for today's {entity}s. Follow the instruction strictly.
+Instruction: {instruction}
+Data: {rows}
+Return the result as concise bullet points or tables when appropriate.
+"""
+    return await llm_complete(summary_prompt)
+
+
+@asynccontextmanager
+async def open_session(base_url: str):
+    async with sse_client(base_url) as (reader, writer):
+        async with ClientSession(reader, writer) as session:
+            await session.initialize()
+            yield session
 
 
 async def run():
-    async with FastMCPClient("http://localhost:8000") as client:
+    async def fake_llm(prompt: str) -> str:
+        # Plug in your preferred completion call (OpenAI, Gemini, local model, etc.).
+        return f"[LLM would answer based on prompt length {len(prompt)}]"
+
+    async with open_session("http://localhost:8000/sse") as session:
         print(
             await answer_business_question(
-                client,
+                session,
                 business_id=42,
                 entity="invoice",
                 instruction="From today's invoices tell me the highest paid service",
+                llm_complete=fake_llm,
             )
         )
 
