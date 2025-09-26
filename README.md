@@ -18,6 +18,10 @@ Open Swagger at http://127.0.0.1:8000/docs and try:
 - POST /tools/campaign/sendWhatsApp
 - POST /tools/analytics/report
 
+## Multi-step tool reasoning
+
+Need an agent to call multiple tools and stitch the answers together (e.g. "List today's appointments and share their phone numbers")? See [`docs/multi_step_tool_workflow.md`](docs/multi_step_tool_workflow.md) for a walkthrough on prompting, orchestrating MCP calls, and feeding the structured results back into the LLM.
+
 ## Test with Gemini (LangChain Structured Agent)
 New terminal:
 ```bat
