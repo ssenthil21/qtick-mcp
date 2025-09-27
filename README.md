@@ -38,3 +38,27 @@ rmdir /S /Q app\tools\__pycache__
 rmdir /S /Q app\schemas\__pycache__
 rmdir /S /Q langchain_tools\__pycache__
 ```
+
+## Pre-merge smoke test
+
+Before merging changes that touch the agent service, run the automated smoke
+test locally to confirm that the configured Gemini model is reachable and the
+FastAPI endpoint responds correctly:
+
+```bash
+export QTICK_GOOGLE_API_KEY=YOUR_MAKERSUITE_API_KEY
+python scripts/agent_smoke_test.py
+```
+
+You can override the default prompt or timeout if needed:
+
+```bash
+python scripts/agent_smoke_test.py --prompt "Say hello" --timeout 90
+```
+
+For CI-style checks without calling external services, continue to rely on the
+unit test suite:
+
+```bash
+pytest
+```
