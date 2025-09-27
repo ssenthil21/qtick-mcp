@@ -7,6 +7,7 @@ import os
 from typing import Any, Dict, List, Optional, Tuple
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from google.api_core.exceptions import NotFound as GoogleAPINotFound
 
 from app.config import Settings, get_settings
 from app.schemas.agent import AgentRunRequest, AgentRunResponse, AgentToolsResponse
@@ -542,7 +543,10 @@ def _get_agent_bundle(cache_key: Tuple[str, str, float]):
     elif not os.getenv("GOOGLE_API_KEY"):
         raise HTTPException(status_code=500, detail="GOOGLE_API_KEY not set on server")
 
-    llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash", temperature=0)
+    llm = ChatGoogleGenerativeAI(
+        model=settings.agent_google_model,
+        temperature=settings.agent_temperature,
+    )
     tools = _build_tools()
     agent = initialize_agent(
         tools=tools,
@@ -578,6 +582,15 @@ async def run_agent(
         return AgentRunResponse(output=output, tool=tool_name, data_points=data_points)
     except HTTPException:
         raise
+    except GoogleAPINotFound as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "Agent model is unavailable. Configure QTICK_AGENT_GOOGLE_MODEL "
+                "to a supported model such as 'gemini-pro'. Original error: "
+                f"{exc}"
+            ),
+        ) from exc
     except Exception as exc:  # pragma: no cover - runtime dependency
         raise HTTPException(status_code=500, detail=f"Agent error: {exc}") from exc
 
