@@ -4,6 +4,7 @@ import sys
 import threading
 
 from fastapi.testclient import TestClient
+from google.api_core.exceptions import NotFound as GoogleAPINotFound
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
@@ -33,6 +34,11 @@ class FakeAgent:
         return f"{prompt} -> {result}"
 
 
+class MissingModelAgent:
+    def run(self, prompt: str, callbacks=None) -> str:
+        raise GoogleAPINotFound("models/missing")
+
+
 def test_agent_run_endpoint_uses_background_thread(monkeypatch):
     tool = FastTool()
     agent = FakeAgent(tool)
@@ -59,6 +65,22 @@ def test_agent_run_endpoint_uses_background_thread(monkeypatch):
     assert agent.thread_ident != loop_thread_ident
 
 
+def test_agent_run_endpoint_handles_missing_model(monkeypatch):
+    agent = MissingModelAgent()
+
+    def fake_get_agent(settings):
+        return agent, []
+
+    monkeypatch.setattr(agent_module, "_get_agent", fake_get_agent)
+
+    client = TestClient(app)
+    response = client.post("/agent/run", json={"prompt": "hello"})
+
+    assert response.status_code == 500
+    payload = response.json()
+    assert "Agent model is unavailable" in payload["detail"]
+
+
 def test_agent_config_uses_runtime_port_default(monkeypatch):
     monkeypatch.delenv("QTICK_MCP_BASE_URL", raising=False)
     monkeypatch.delenv("MCP_BASE_URL", raising=False)
@@ -66,6 +88,8 @@ def test_agent_config_uses_runtime_port_default(monkeypatch):
     monkeypatch.setenv("PORT", "10000")
     monkeypatch.setenv("QTICK_GOOGLE_API_KEY", "test-key")
     monkeypatch.setenv("GOOGLE_API_KEY", "test-key")
+    monkeypatch.setenv("QTICK_AGENT_GOOGLE_MODEL", "gemini-1.5-flash-custom")
+    monkeypatch.setenv("QTICK_AGENT_TEMPERATURE", "0.25")
 
     import app.config as config_module
     import langchain_tools.qtick as qtick_module
@@ -78,6 +102,7 @@ def test_agent_config_uses_runtime_port_default(monkeypatch):
     assert qtick_module.MCP_BASE == "http://127.0.0.1:10000"
 
     captured = {}
+    llm_kwargs: dict = {}
     real_configure = agent_mod.configure
 
     def spy_configure(*, base_url: str, timeout: float | None = None) -> None:
@@ -86,7 +111,13 @@ def test_agent_config_uses_runtime_port_default(monkeypatch):
         real_configure(base_url=base_url, timeout=timeout)
 
     monkeypatch.setattr(agent_mod, "configure", spy_configure)
-    monkeypatch.setattr(agent_mod, "ChatGoogleGenerativeAI", lambda **_: object())
+
+    def spy_llm(**kwargs):
+        llm_kwargs.clear()
+        llm_kwargs.update(kwargs)
+        return object()
+
+    monkeypatch.setattr(agent_mod, "ChatGoogleGenerativeAI", spy_llm)
     monkeypatch.setattr(agent_mod, "initialize_agent", lambda **_: object())
 
     config_module.get_settings.cache_clear()
@@ -98,6 +129,10 @@ def test_agent_config_uses_runtime_port_default(monkeypatch):
     assert captured["base_url"].startswith("http://127.0.0.1:10000")
     assert qtick_module.MCP_BASE == "http://127.0.0.1:10000"
     assert captured["timeout"] == settings.agent_tool_timeout
+    assert llm_kwargs == {
+        "model": settings.agent_google_model,
+        "temperature": settings.agent_temperature,
+    }
 
 
 def test_agent_config_local_default(monkeypatch):
