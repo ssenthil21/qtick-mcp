@@ -41,7 +41,7 @@ class Settings(BaseSettings):
     use_mock_data: bool = Field(default=True, alias="USE_MOCK_DATA")
     google_api_key: str | None = Field(default=None, alias="GOOGLE_API_KEY")
     agent_google_model: str = Field(
-        default="gemini-1.5-flash-latest", alias="AGENT_GOOGLE_MODEL"
+        default="gemini-2.5-flash", alias="AGENT_GOOGLE_MODEL"
     )
     agent_temperature: float = Field(default=0.0, alias="AGENT_TEMPERATURE")
     mcp_base_url: AnyHttpUrl = Field(
