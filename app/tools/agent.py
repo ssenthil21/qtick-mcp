@@ -587,7 +587,7 @@ async def run_agent(
             status_code=500,
             detail=(
                 "Agent model is unavailable. Configure QTICK_AGENT_GOOGLE_MODEL "
-                "to a supported model such as 'gemini-1.5-flash-latest'. Original error: "
+                "to a supported model such as 'gemini-2.5-flash'. Original error: "
                 f"{exc}"
             ),
         ) from exc

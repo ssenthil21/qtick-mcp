@@ -45,6 +45,9 @@ Before merging changes that touch the agent service, run the automated smoke
 test locally to confirm that the configured Gemini model is reachable and the
 FastAPI endpoint responds correctly:
 
+> The service defaults to `gemini-2.5-flash`. Override it by exporting
+> `QTICK_AGENT_GOOGLE_MODEL` if you need to target a different release.
+
 ```bash
 export QTICK_GOOGLE_API_KEY=YOUR_MAKERSUITE_API_KEY
 python scripts/agent_smoke_test.py
