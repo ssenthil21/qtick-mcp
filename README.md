@@ -18,6 +18,60 @@ Open Swagger at http://127.0.0.1:8000/docs and try:
 - POST /tools/campaign/sendWhatsApp
 - POST /tools/analytics/report
 
+## Lead creation Java API example
+
+When running against the real Java services you must authorise requests with the
+bearer token configured for your environment. Export the token so both the
+FastAPI service and command-line utilities can reuse it:
+
+```bash
+export QTICK_USE_MOCK_DATA=0
+export QTICK_JAVA_SERVICE_TOKEN=YOUR_BEARER_TOKEN
+FOLLOW_UP_TS=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+```
+
+The payload used by the `/tools/leads/create` MCP tool matches the downstream
+Java endpoint. You can inspect or debug the live flow with a direct `curl`
+request:
+
+```bash
+curl -X POST "https://api.qa.qtick.co/api/biz/sales-enq" \
+  -H "Authorization: Bearer ${QTICK_JAVA_SERVICE_TOKEN}" \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"bizId\": \"<tool selection id>\",
+    \"phone\": \"<input from nlp>\",
+    \"custName\": \"<input from nlp>\",
+    \"location\": \"<input from nlp>\",
+    \"enqFor\": \"<input from nlp>\",
+    \"srcChannel\": \"WA\",
+    \"campId\": null,
+    \"campName\": null,
+    \"details\": \"<input from nlp>\",
+    \"thdStatus\": \"O\",
+    \"interest\": 4,
+    \"followUpDate\": \"${FOLLOW_UP_TS}\",
+    \"enquiredOn\": \"${FOLLOW_UP_TS}\",
+    \"enqForTime\": \"${FOLLOW_UP_TS}\",
+    \"attnStaffId\": 21,
+    \"attnChannel\": \"P\"
+  }"
+```
+
+> Replace the placeholder values with the actual data captured from the LLM or
+> client workflow. The `FOLLOW_UP_TS` helper above captures the current UTC
+> timestamp; feel free to adjust the value if the follow-up needs to happen in
+> the future.
+
+To inspect leads that have already been captured for a business, call the list
+endpoint with the same bearer token. The query parameters mirror the defaults
+used by the MCP tool, so you can leave them empty to retrieve the full list:
+
+```bash
+curl "https://api.qa.qtick.co/api/biz/<bizId>/sales-enq/list?searchText=&status=&periodType=&periodFilterBy=A&fromDate=&toDate=" \
+  -H "Authorization: Bearer ${QTICK_JAVA_SERVICE_TOKEN}"
+```
+
 ## Multi-step tool reasoning
 
 Need an agent to call multiple tools and stitch the answers together (e.g. "List today's appointments and share their phone numbers")? See [`docs/multi_step_tool_workflow.md`](docs/multi_step_tool_workflow.md) for a walkthrough on prompting, orchestrating MCP calls, and feeding the structured results back into the LLM.

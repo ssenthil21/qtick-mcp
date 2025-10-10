@@ -38,7 +38,10 @@ class Settings(BaseSettings):
         default=None, alias="JAVA_SERVICE_BASE_URL"
     )
     java_service_timeout: float = Field(default=10.0, alias="JAVA_SERVICE_TIMEOUT")
-    use_mock_data: bool = Field(default=True, alias="USE_MOCK_DATA")
+    java_service_token: str | None = Field(
+        default=None, alias="JAVA_SERVICE_TOKEN"
+    )
+    use_mock_data: bool = Field(default=False, alias="USE_MOCK_DATA")
     google_api_key: str | None = Field(default=None, alias="GOOGLE_API_KEY")
     agent_google_model: str = Field(
         default="gemini-2.5-flash", alias="AGENT_GOOGLE_MODEL"
