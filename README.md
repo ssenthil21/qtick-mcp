@@ -26,9 +26,14 @@ FastAPI service and command-line utilities can reuse it:
 
 ```bash
 export QTICK_USE_MOCK_DATA=0
+export QTICK_JAVA_SERVICE_BASE_URL=https://api.qa.qtick.co/api/biz
 export QTICK_JAVA_SERVICE_TOKEN=YOUR_BEARER_TOKEN
 FOLLOW_UP_TS=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 ```
+
+> The application also recognises the unprefixed environment variables
+> (`USE_MOCK_DATA`, `JAVA_SERVICE_BASE_URL`, `JAVA_SERVICE_TOKEN`) if you prefer
+> to configure them directly in your deployment platform.
 
 The payload used by the `/tools/leads/create` MCP tool matches the downstream
 Java endpoint. You can inspect or debug the live flow with a direct `curl`
