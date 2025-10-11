@@ -24,6 +24,22 @@ from starlette.routing import Mount
 from app.health import router as health_router
 
 
+def configure_logging() -> None:
+    """Ensure application logs use the INFO level by default."""
+
+    root_logger = logging.getLogger()
+    if not root_logger.handlers:
+        logging.basicConfig(
+            level=logging.INFO,
+            format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
+        )
+    else:
+        root_logger.setLevel(logging.INFO)
+
+
+configure_logging()
+
+
 logger = logging.getLogger(__name__)
 
 
