@@ -1,5 +1,6 @@
 
 from contextlib import asynccontextmanager
+import logging
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -20,7 +21,10 @@ from app.tools.live_ops import router as live_ops_router
 from app.tools.mcp import router as mcp_router
 from app.mcp_server import mcp
 from starlette.routing import Mount
-from app.health import router as health_router 
+from app.health import router as health_router
+
+
+logger = logging.getLogger(__name__)
 
 
 
@@ -62,5 +66,10 @@ app.mount("/mcp", mcp.streamable_http_app()) # Mount the MCP Streamable HTTP ser
 from starlette.routing import Mount
 @app.on_event("startup")
 async def _debug_routes():
+    settings_snapshot = get_settings().model_dump(
+        by_alias=True,
+        exclude={"java_service_token", "google_api_key"},
+    )
+    logger.info("Application settings on startup: %s", settings_snapshot)
     has_mcp = any(isinstance(r, Mount) and r.path == "/mcp" for r in app.routes)
-    print(f"[DEBUG] MCP mount present: {has_mcp}")
+    logger.debug("MCP mount present: %s", has_mcp)
