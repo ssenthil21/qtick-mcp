@@ -182,7 +182,7 @@ def test_analytics_reports_top_services_for_chillbreeze_adayar() -> None:
     client = MockLatencyClient()
     appointments = AppointmentService(client)
     invoices = InvoiceService(client)
-    leads = LeadService(client)
+    leads = LeadService(client, repository=get_mock_store().leads)
     analytics = AnalyticsService(client)
 
     business_id = ADAYAR_BUSINESS_ID
@@ -432,7 +432,7 @@ def test_live_operations_events_include_recent_activity() -> None:
     client = MockLatencyClient()
     appointments = AppointmentService(client)
     invoices = InvoiceService(client)
-    leads = LeadService(client)
+    leads = LeadService(client, repository=get_mock_store().leads)
     live_ops = LiveOperationsService(client)
 
     now = datetime.now(timezone.utc)
@@ -497,7 +497,7 @@ def test_live_operations_events_include_recent_activity() -> None:
 
 def test_lead_repository_stores_created_leads() -> None:
     client = MockLatencyClient()
-    service = LeadService(client)
+    service = LeadService(client, repository=get_mock_store().leads)
 
     request = LeadCreateRequest(business_id=LEADS_BUSINESS_ID, name="Morgan", email="m@example.com")
     response = asyncio.run(service.create(request))
@@ -663,7 +663,7 @@ def test_haircut_lookup_with_space_prompts_for_specific_service() -> None:
 
 def test_lead_create_prompts_follow_up_and_list() -> None:
     client = MockLatencyClient()
-    service = LeadService(client)
+    service = LeadService(client, repository=get_mock_store().leads)
 
     request = LeadCreateRequest(
         business_id=SEED_CHILLBREEZE_ID,

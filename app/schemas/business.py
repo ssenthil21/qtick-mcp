@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import List, Optional
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator
 
 
 class BusinessSummary(BaseModel):
@@ -41,14 +41,15 @@ class ServiceLookupRequest(BaseModel):
     business_name: Optional[str] = Field(None, description="Business name fragment when id is unknown")
     limit: int = Field(5, ge=1, le=20, description="Maximum number of services to return")
 
-    @model_validator(mode="after")
-    def validate_business_selector(cls, values: "ServiceLookupRequest") -> "ServiceLookupRequest":
-        if not values.business_id and values.business_name:
-            normalized = values.business_name.strip()
-            if not normalized:
-                raise ValueError("business_name cannot be empty when provided")
-            values.business_name = normalized
-        return values
+    @field_validator("business_name")
+    @classmethod
+    def _normalize_business_name(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("business_name cannot be empty when provided")
+        return normalized
 
 
 class BusinessServiceMatch(BaseModel):

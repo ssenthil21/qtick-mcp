@@ -24,6 +24,7 @@ def get_java_client_cached() -> JavaServiceClient:
         settings.java_service_base_url,
         timeout=settings.java_service_timeout,
         use_mock_data=settings.use_mock_data,
+        token=settings.java_service_token,
     )
 
 
