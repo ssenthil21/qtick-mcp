@@ -29,7 +29,11 @@ class LeadService:
         self._repository = repository
         if self._client.use_mock_data and self._repository is None:
             raise RuntimeError(
-                "LeadService requires a repository when mock mode is enabled"
+                "LeadService requires a repository when mock mode is enabled. "
+                "Set QTICK_USE_MOCK_DATA=false (or USE_MOCK_DATA=false) and "
+                "configure QTICK_JAVA_SERVICE_BASE_URL to call the Java service. "
+                "Provide QTICK_JAVA_SERVICE_TOKEN (or JAVA_SERVICE_TOKEN) if a "
+                "bearer token is required."
             )
 
     async def create(self, request: LeadCreateRequest) -> LeadCreateResponse:
