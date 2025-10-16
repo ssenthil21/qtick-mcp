@@ -7,6 +7,7 @@ from typing import List, Optional, Protocol
 
 from google.api_core.exceptions import GoogleAPIError
 import google.generativeai as genai
+import json
 
 from app.clients.java import JavaServiceClient
 from app.schemas.analytics import AnalyticsRequest, AnalyticsResponse
@@ -145,10 +146,37 @@ class DailySummaryService:
 
     async def _fetch_live_data(self, request: DailySummaryRequest) -> DailySummaryData:
         try:
-            raw = await self._client.post(
-                "/business/daily-summary", request.model_dump(exclude_none=True)
+            params = {
+               "startTime": request.date,
+                "endTime": request.date
+            }
+            sales = await self._client.get(
+                f"reports/sales-report/{request.business_id}", params=params
             )
-            return DailySummaryData(**raw)
+            params = {
+               "date": request.date
+            }
+            dailySales = await self._client.get(
+                f"reports/daily-sales-report/{request.business_id}", params=params
+            )
+            metrics = []
+            if sales:
+                metrics.append(json.dumps(sales, indent=2))
+            if dailySales:
+                metrics.append(json.dumps(dailySales, indent=2))
+
+            # Build structured summary
+            summary = DailySummaryData(
+                business=BusinessSummary(
+                    biz_id=request.business_id,
+                    name=getattr(request, "business_name", "Unknown")
+                ),
+                date=request.date,
+                generated_at=datetime.now(timezone.utc).isoformat(),
+                metrics=metrics
+            )
+
+            return summary
         except ServiceError:
             raise
         except Exception as exc:  # pragma: no cover - defensive

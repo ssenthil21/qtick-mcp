@@ -355,6 +355,7 @@ def analytics_tool():
         func=_analytics_report,
         args_schema=AnalyticsInput,
     )
+    
 
 # ---------- Live Operations Summary ----------
 class LiveOpsInput(BaseModel):

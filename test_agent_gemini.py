@@ -15,6 +15,7 @@ from langchain_tools.qtick import (
     campaign_tool,
     analytics_tool,
     datetime_tool,
+    
 )
 
 tools = [
@@ -48,7 +49,8 @@ def run_case(title: str, prompt: str):
 if __name__ == "__main__":
     # Make sure: uvicorn app.main:app --reload
     #run_case("Create Lead", "Create a new lead for business 11 named Priya N. phone +6581234567 email priya@example.com source whatsapp.")
-    run_case("List Lead", "List leads for business 11 ")
+    #run_case("List Lead", "List leads for business 11 ")
+    run_case("Daily summary", "Generate daily summary for business 119 for 10 Oct 2025")
     #run_case("Datetime Parse", "Convert 'tomorrow 5 PM Singapore' to ISO 8601 (just return the timestamp).")
     #run_case("Book Appointment", "Book a haircut for Alex at business 'chillbreeze' tomorrow 5 PM SGT. Service is 'haircut'.")
     #run_case("List Appointments", "List confirmed appointments for business 'chillbreeze' between 2025-09-01 and 2025-09-14, page size 10.")
