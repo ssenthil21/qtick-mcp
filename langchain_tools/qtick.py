@@ -355,7 +355,58 @@ def analytics_tool():
         func=_analytics_report,
         args_schema=AnalyticsInput,
     )
-    
+
+
+# ---------- Daily Summary ----------
+class DailySummaryInput(BaseModel):
+    business_id: int
+    date: Optional[str] = Field(
+        default=None, description="ISO formatted date (YYYY-MM-DD). Defaults to today."
+    )
+    metrics: Optional[List[str]] = Field(
+        default=None,
+        description="Optional list of metric identifiers forwarded to analytics backend.",
+    )
+    period: str = Field(
+        default="day",
+        description="Reporting period hint understood by the analytics service.",
+    )
+
+    @field_validator("date")
+    @classmethod
+    def ensure_date(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return value
+        try:
+            datetime.fromisoformat(value)
+        except Exception as exc:  # pragma: no cover - defensive
+            raise ValueError("date must be provided in ISO format YYYY-MM-DD") from exc
+        return value
+
+
+def _daily_summary(
+    business_id: int,
+    date: Optional[str] = None,
+    metrics: Optional[List[str]] = None,
+    period: str = "day",
+):
+    payload = {
+        "business_id": business_id,
+        "date": date,
+        "metrics": metrics,
+        "period": period,
+    }
+    return _post_tool("/tools/business/daily-summary", payload)
+
+
+def daily_summary_tool():
+    return StructuredTool.from_function(
+        name="daily_summary",
+        description="Generate an LLM-authored daily business summary with key metrics.",
+        func=_daily_summary,
+        args_schema=DailySummaryInput,
+    )
+
 
 # ---------- Live Operations Summary ----------
 class LiveOpsInput(BaseModel):
@@ -460,6 +511,7 @@ __all__ = [
     "lead_create_tool",
     "campaign_tool",
     "analytics_tool",
+    "daily_summary_tool",
     "datetime_tool",
     "configure",
 ]

@@ -14,8 +14,9 @@ from langchain_tools.qtick import (
     lead_list_tool,
     campaign_tool,
     analytics_tool,
+    daily_summary_tool,
     datetime_tool,
-    
+
 )
 
 tools = [
@@ -27,6 +28,7 @@ tools = [
     lead_list_tool(),
     campaign_tool(),
     analytics_tool(),
+    daily_summary_tool(),
 ]
 
 llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0)

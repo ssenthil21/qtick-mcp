@@ -3,10 +3,15 @@ from langchain.agents import initialize_agent, AgentType
 from langchain.tools import Tool
 
 # Import your QTick tools
-from langchain_tools.qtick import appointment_tool, campaign_tool, analytics_tool
+from langchain_tools.qtick import (
+    appointment_tool,
+    campaign_tool,
+    analytics_tool,
+    daily_summary_tool,
+)
 
 # Setup tools list
-tools = [appointment_tool(), campaign_tool(), analytics_tool()]
+tools = [appointment_tool(), campaign_tool(), analytics_tool(), daily_summary_tool()]
 
 # Load LLM (OpenAI or local-compatible)
 llm = ChatOpenAI(temperature=0, model="gpt-3.5-turbo", openai_api_key="sk-...")
