@@ -18,6 +18,7 @@ __all__ = [
     "AppointmentService",
     "AnalyticsService",
     "CampaignService",
+    "DailySummaryService",
     "InvoiceService",
     "LeadService",
     "BusinessDirectoryService",
@@ -28,6 +29,7 @@ _SERVICE_MODULES = {
     "AppointmentService": "appointment",
     "AnalyticsService": "analytics",
     "CampaignService": "campaign",
+    "DailySummaryService": "daily_summary",
     "InvoiceService": "invoice",
     "LeadService": "leads",
     "BusinessDirectoryService": "business",
@@ -53,4 +55,5 @@ if TYPE_CHECKING:  # pragma: no cover - import for static analysis only
     from .campaign import CampaignService as CampaignService
     from .invoice import InvoiceService as InvoiceService
     from .leads import LeadService as LeadService
+    from .daily_summary import DailySummaryService as DailySummaryService
 
