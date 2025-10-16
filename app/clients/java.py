@@ -22,10 +22,14 @@ class JavaServiceClient:
         use_mock_data: bool = True,
         token: str | None = None,
     ) -> None:
-        self._base_url = base_url.rstrip("/") if base_url else None
+        self._base_url = str(base_url).rstrip("/") if base_url else None
         self._timeout = timeout
         self.use_mock_data = use_mock_data or not self._base_url
         self._headers = {"Authorization": f"Bearer {token}"} if token else None
+        self._headers.update({
+              "Content-Type": "application/json",
+            "Accept": "application/json"
+        })
         self._client: Optional[httpx.AsyncClient] = None
         if not self.use_mock_data and self._base_url:
             self._client = self._build_client()
@@ -53,7 +57,10 @@ class JavaServiceClient:
             raise RuntimeError("Real HTTP call requested while mock mode is enabled")
         client = await self._ensure_client()
         try:
+            print(f"--- Sending to Java API ---\nURL: {path}\nPayload: {payload}\n--------------------------")
             response = await client.post(path, json=payload)
+            print(response.status_code)
+            print(response.text)
             response.raise_for_status()
             return response.json()
         except httpx.HTTPStatusError as exc:

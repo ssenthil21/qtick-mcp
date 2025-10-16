@@ -27,6 +27,8 @@ class LeadService:
     ) -> None:
         self._client = client
         self._repository = repository
+        print(self._client)
+        print(self._repository)
         if self._client.use_mock_data and self._repository is None:
             raise RuntimeError(
                 "LeadService requires a repository when mock mode is enabled. "
@@ -67,16 +69,18 @@ class LeadService:
 
             payload: Dict[str, Any] = {
                 "bizId": request.business_id,
-                "phone": request.phone,
+                "phone": request.phone.replace('+', ''),
                 "custName": request.name,
                 "location": request.location,
                 "enqFor": request.enquiry_for,
                 "srcChannel": _map_source_to_channel(request.source),
-                "campId": None,
-                "campName": None,
-                "details": "\n".join(details_lines) if details_lines else None,
-                "thdStatus": request.third_status or "O",
-                "interest": request.interest or 4,
+                "campId": 38,
+                "campName": 'Campaign',
+                "location":"Serangoon",
+                "enqFor":"Offer",
+                "details": "",
+                "thdStatus": "A",
+                "interest": 3,
                 "followUpDate": follow_up_date,
                 "enquiredOn": enquired_on,
                 "enqForTime": enquiry_for_time,
@@ -86,50 +90,26 @@ class LeadService:
             payload = _filter_payload(payload, preserve_keys={"campId", "campName"})
 
             data = await self._client.post("/sales-enq", payload)
-            record = _extract_lead_record(data)
-            if not record:
-                raise ServiceError("Java service did not return a lead record")
-
-            lead_id = str(
-                record.get("lead_id")
-                or record.get("leadId")
-                or record.get("enqId")
-                or record.get("id")
-                or record.get("uuid")
-                or ""
-            ).strip()
-            if not lead_id:
-                raise ServiceError("Java service did not return a lead identifier")
-
-            created_at = (
-                record.get("created_at")
-                or record.get("createdAt")
-                or record.get("enquiredOn")
-                or record.get("createdOn")
-                or enquired_on
-            )
-            status = (
-                record.get("status")
-                or record.get("thdStatus")
-                or record.get("leadStatus")
-                or "open"
-            )
-            next_action = (
-                record.get("next_action")
-                or record.get("nextAction")
-                or record.get("message")
-                or "Schedule a follow-up call or message with this lead within 24 hours."
-            )
-            follow_up_required = record.get("follow_up_required")
-            if follow_up_required is None:
-                follow_up_required = True
-
+            
+            record = {
+                "bizId": data.get("bizId"),
+                "custId": data.get("custId"),
+                "enqNo": data.get("enqNo"),
+                "custName": data.get("custName"),
+                "phone": data.get("phone"),
+                "enqFor": data.get("enqFor"),
+                "status": data.get("status"),
+                "followUpDate": data.get("followUpDate"),
+                "thdStatus": data.get("thdStatus"),
+                "threadCount": data.get("threadCount"),
+            }
+            
+            print(record)
             return LeadCreateResponse(
-                lead_id=lead_id,
-                status=str(status),
-                created_at=str(created_at),
-                next_action=str(next_action),
-                follow_up_required=bool(follow_up_required),
+                lead_id=str(record["bizId"]),         # fixed
+                status=str(record["status"]), 
+                created_at=str(enquired_on),
+                next_action=str("Followup"),
             )
         except ServiceError:
             raise
@@ -170,49 +150,27 @@ class LeadService:
             data = await self._client.get(
                 f"/{request.business_id}/sales-enq/list", params=params
             )
-            records = _extract_lead_items(data)
-            summaries: List[LeadSummary] = []
-            for item in records:
-                lead_id = str(
-                    item.get("lead_id")
-                    or item.get("leadId")
-                    or item.get("enqId")
-                    or item.get("id")
-                    or item.get("uuid")
-                    or ""
-                ).strip()
-                if not lead_id:
-                    continue
+            print(data)
+            
+            leads: List[LeadSummary] = []
 
-                summaries.append(
-                    LeadSummary(
-                        lead_id=lead_id,
-                        name=str(
-                            item.get("custName")
-                            or item.get("name")
-                            or item.get("customerName")
-                            or "Unknown"
-                        ),
-                        status=str(
-                            item.get("status")
-                            or item.get("thdStatus")
-                            or item.get("leadStatus")
-                            or "open"
-                        ),
-                        created_at=str(
-                            item.get("created_at")
-                            or item.get("createdAt")
-                            or item.get("enquiredOn")
-                            or item.get("createdOn")
-                            or _utc_now_iso()
-                        ),
-                        phone=item.get("phone") or item.get("mobile"),
-                        email=item.get("email") or item.get("mail"),
-                        source=item.get("srcChannel") or item.get("source"),
-                    )
+            for item in data:
+                lead = LeadSummary(
+                    lead_id=str(item.get("enqNo")),           # using enqNo as unique lead id
+                    name=item.get("custName", ""),
+                    status=str(item.get("status", "")),
+                    created_at=item.get("enquiredOn", ""),
+                    phone=item.get("phone"),
+                    email=None,                               # Java API doesn’t have email field
+                    source=item.get("srcChannel")
                 )
-            total = _extract_total(data, len(summaries))
-            return LeadListResponse(total=total, items=summaries)
+                leads.append(lead)
+
+            return LeadListResponse(
+                total=len(leads),
+                items=leads
+            )
+            
         except ServiceError:
             raise
         except Exception as exc:  # pragma: no cover - defensive
@@ -221,13 +179,12 @@ class LeadService:
 
 
 def _utc_now_iso() -> str:
-    return (
-        datetime.now(timezone.utc)
-        .replace(microsecond=0)
-        .isoformat()
-        .replace("+00:00", "Z")
-    )
+    # Get current UTC time
+    dt = datetime.now(timezone.utc)
 
+    # Format as desired: 2025-09-23T04:30:00.000+0000
+    formatted = dt.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "+0000"
+    return formatted
 
 def _map_source_to_channel(source: str | None) -> str:
     if not source:

@@ -76,6 +76,17 @@ openai_tool_schemas = [
         }
     },
     {
+        "name": "leads.list",
+        "description": "List leads from business.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "business_id": {"type": "integer"}
+            },
+            "required": ["business_id", "name"]
+        }
+    },
+    {
         "name": "campaign.sendWhatsApp",
         "description": "Sends a WhatsApp campaign message to a customer.",
         "parameters": {

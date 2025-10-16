@@ -20,6 +20,7 @@ from app.services import (
 @lru_cache(maxsize=1)
 def get_java_client_cached() -> JavaServiceClient:
     settings = get_settings()
+    print(str(settings))
     return JavaServiceClient(
         settings.java_service_base_url,
         timeout=settings.java_service_timeout,
