@@ -19,12 +19,14 @@ from app.schemas.billing import (
 )
 from app.schemas.campaign import CampaignRequest
 from app.schemas.business import BusinessSearchRequest, ServiceLookupRequest
+from app.schemas.daily_summary import DailySummaryRequest
 from app.schemas.live_ops import LiveOpsRequest
 from app.schemas.lead import LeadCreateRequest, LeadListRequest
 from app.services.analytics import AnalyticsService
 from app.services.appointment import AppointmentService
 from app.services.business import BusinessDirectoryService
 from app.services.campaign import CampaignService
+from app.services.daily_summary import DailySummaryService
 from app.services.invoice import InvoiceService
 from app.services.leads import LeadService
 from app.services.live_ops import LiveOperationsService
@@ -57,6 +59,14 @@ class MockLatencyClient:
 
     async def simulate_latency(self) -> None:
         self.latency_called = True
+
+
+class StubSummaryGenerator:
+    async def summarize(self, payload) -> str:
+        return (
+            f"{payload.business.name} summary generated with "
+            f"{len(payload.metrics)} metrics"
+        )
 
 
 def test_mock_appointment_service_persists_records() -> None:
@@ -732,6 +742,47 @@ def test_invoice_service_real_mode_invokes_client_post() -> None:
     client.post.assert_awaited_once_with("/invoices", request.model_dump())
     assert response.invoice_id == "INV-20002"
     assert response.payment_link == "https://pay.qtick.co/INV-20002"
+
+
+def test_daily_summary_service_builds_metrics_and_summary() -> None:
+    client = MockLatencyClient()
+    appointment_service = AppointmentService(client)
+    invoice_service = InvoiceService(client)
+    service = DailySummaryService(client, summarizer=StubSummaryGenerator())
+
+    business_id = SEED_CHILLBREEZE_ID
+
+    asyncio.run(
+        appointment_service.book(
+            AppointmentRequest(
+                business_id=business_id,
+                customer_name="Jamie",
+                service_id=101,
+                datetime="2025-09-07T11:00:00+08:00",
+            )
+        )
+    )
+
+    asyncio.run(
+        invoice_service.create(
+            InvoiceRequest(
+                business_id=business_id,
+                customer_name="Jamie",
+                items=[
+                    LineItem(description="Signature Haircut", quantity=1, unit_price=38.0)
+                ],
+                currency="SGD",
+            )
+        )
+    )
+
+    request = DailySummaryRequest(business_id=business_id)
+    response = asyncio.run(service.generate(request))
+
+    assert response.business.business_id == business_id
+    assert response.summary.startswith("Chillbreeze")
+    metric_keys = {metric.key for metric in response.metrics}
+    assert {"footfall", "total_revenue", "invoice_count"}.issubset(metric_keys)
 
 
 def test_analytics_service_real_mode_invokes_client_post() -> None:

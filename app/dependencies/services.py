@@ -11,10 +11,12 @@ from app.services import (
     AppointmentService,
     BusinessDirectoryService,
     CampaignService,
+    DailySummaryService,
     InvoiceService,
     LeadService,
     LiveOperationsService,
 )
+from app.services.daily_summary import GeminiDailySummaryGenerator
 
 
 @lru_cache(maxsize=1)
@@ -73,3 +75,14 @@ def get_live_ops_service(
     client: JavaServiceClient = Depends(get_java_client),
 ) -> LiveOperationsService:
     return LiveOperationsService(client)
+
+
+def get_daily_summary_service(
+    client: JavaServiceClient = Depends(get_java_client),
+    settings: Settings = Depends(get_settings),
+) -> DailySummaryService:
+    summarizer = GeminiDailySummaryGenerator(
+        api_key=settings.google_api_key,
+        model=settings.agent_google_model,
+    )
+    return DailySummaryService(client, summarizer=summarizer)

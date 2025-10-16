@@ -41,6 +41,28 @@ TOOLS: List[Dict[str, Any]] = [
         },
     },
     {
+        "name": "business.daily_summary",
+        "description": "Generate an LLM-authored daily summary for a business using current metrics.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "business_id": {"type": "integer"},
+                "date": {"type": "string", "format": "date"},
+                "metrics": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Optional metric identifiers to forward to the analytics backend.",
+                },
+                "period": {
+                    "type": "string",
+                    "default": "day",
+                    "description": "Reporting period hint understood by the Java analytics API.",
+                },
+            },
+            "required": ["business_id"],
+        },
+    },
+    {
         "name": "appointments.book",
         "description": "Book an appointment in QTick.",
         "inputSchema": {
@@ -207,6 +229,7 @@ def mcp_tools_call(call: ToolCall):
         routes = {
             "business.search": "/tools/business/search",
             "business.services.find": "/tools/business/services/find",
+            "business.daily_summary": "/tools/business/daily-summary",
             "appointments.book": "/tools/appointment/book",
             "appointments.list": "/tools/appointment/list",
             "invoice.create": "/tools/invoice/create",
