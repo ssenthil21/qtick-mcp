@@ -14,7 +14,7 @@ from app.schemas.agent import AgentRunRequest, AgentRunResponse, AgentToolsRespo
 from app.services.agent_logging import AgentLoggingCallbackHandler, AgentRunCollector
 
 from app.services.conversation_memory import ConversationTurn, conversation_memory
-from langchain.agents import AgentType, initialize_agent
+from app.services.langchain_compat import AgentType, initialize_agent
 from langchain_google_genai import ChatGoogleGenerativeAI
 
 from langchain_tools.qtick import (

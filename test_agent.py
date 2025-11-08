@@ -1,6 +1,6 @@
 from langchain.chat_models import ChatOpenAI
-from langchain.agents import initialize_agent, AgentType
-from langchain.tools import Tool
+from app.services.langchain_compat import AgentType, initialize_agent
+from langchain_core.tools import Tool
 
 # Import your QTick tools
 from langchain_tools.qtick import (
@@ -20,7 +20,7 @@ llm = ChatOpenAI(temperature=0, model="gpt-3.5-turbo", openai_api_key="sk-...")
 agent = initialize_agent(
     tools=tools,
     llm=llm,
-    agent=AgentType.ZERO_SHOT_REACT_DESCRIPTION,
+    agent=AgentType.STRUCTURED_CHAT_ZERO_SHOT_REACT_DESCRIPTION,
     verbose=True
 )
 

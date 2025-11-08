@@ -66,7 +66,7 @@ class DailySummaryData(BaseModel):
     business: BusinessSummary
     date: str
     generated_at: str
-    metrics: List[str]
+    metrics: List[Union[str, DailySummaryMetric]]
 
 
 class DailySummaryResponse(DailySummaryData):

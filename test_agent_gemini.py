@@ -2,7 +2,7 @@
 # test_agent_gemini.py
 import os
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain.agents import initialize_agent, AgentType
+from app.services.langchain_compat import AgentType, initialize_agent
 
 os.environ.setdefault("GOOGLE_API_KEY", os.getenv("GOOGLE_API_KEY"))
 

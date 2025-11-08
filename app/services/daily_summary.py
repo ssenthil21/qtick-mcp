@@ -77,8 +77,24 @@ class GeminiDailySummaryGenerator:
     def _build_prompt(payload: DailySummaryData) -> str:
         metric_lines = []
         for metric in payload.metrics:
-            base = f"- {metric}"
-            metric_lines.append(base)
+            if isinstance(metric, DailySummaryMetric):
+                details = {
+                    key: value
+                    for key, value in metric.model_dump().items()
+                    if value not in (None, "")
+                }
+                label = details.pop("label", metric.key)
+                value = details.pop("value", "")
+                unit = details.pop("unit", None)
+                description = f"{label}: {value}"
+                if unit:
+                    description = f"{description} {unit}"
+                if details:
+                    extras = ", ".join(f"{k}={v}" for k, v in details.items())
+                    description = f"{description} ({extras})"
+                metric_lines.append(f"- {description}")
+            else:
+                metric_lines.append(f"- {metric}")
 
         metrics_block = "\n".join(metric_lines)
         
@@ -175,8 +191,11 @@ class GeminiDailySummaryGenerator:
     def _fallback_summary(payload: DailySummaryData) -> str:
         highlights = []
         for metric in payload.metrics[:3]:
-            unit = f" {metric.unit}" if metric.unit else ""
-            highlights.append(f"{metric.label}: {metric.value}{unit}")
+            if isinstance(metric, DailySummaryMetric):
+                unit = f" {metric.unit}" if metric.unit else ""
+                highlights.append(f"{metric.label}: {metric.value}{unit}")
+            else:
+                highlights.append(str(metric))
         bullet_section = "\n".join(f"- {line}" for line in highlights)
         return (
             f"Summary for {payload.business.name} on {payload.date}:\n"
@@ -205,7 +224,7 @@ class DailySummaryService:
             self._analytics = analytics_repository or store.analytics
             self._master_data = master_data or store.master_data
 
-    async def generate(self, request: DailySummaryRequest) -> str:
+    async def generate(self, request: DailySummaryRequest) -> DailySummaryResponse:
         logger.info(
             "Generating daily summary for business %s", request.business_id
         )
@@ -216,7 +235,6 @@ class DailySummaryService:
         )
 
         summary = await self._summarizer.summarize(payload)
-        return summary
         return DailySummaryResponse(**payload.model_dump(), summary=summary)
 
     async def _fetch_live_data(self, request: DailySummaryRequest) -> DailySummaryData:
