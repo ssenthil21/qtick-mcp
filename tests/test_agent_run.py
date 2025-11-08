@@ -12,6 +12,7 @@ from app.main import app
 import app.tools.agent as agent_module
 
 
+from app.services.conversation_memory import ConversationMemoryStore, conversation_memory
 class FastTool:
     def __init__(self) -> None:
         self.name = "fast_tool"
@@ -27,9 +28,11 @@ class FakeAgent:
     def __init__(self, tool: FastTool) -> None:
         self.tool = tool
         self.thread_ident = None
+        self.prompts: list[str] = []
 
     def run(self, prompt: str, callbacks=None) -> str:
         self.thread_ident = threading.get_ident()
+        self.prompts.append(prompt)
         result = self.tool()
         return f"{prompt} -> {result}"
 
@@ -59,6 +62,9 @@ def test_agent_run_endpoint_uses_background_thread(monkeypatch):
     assert payload["output"] == "hello -> tool result"
     assert payload["tool"] is None
     assert payload["dataPoints"] == []
+    assert payload["requiresHuman"] is False
+    assert payload["pendingTool"] is None
+    assert payload["pendingToolInput"] is None
     assert tool.called is True
     assert agent.thread_ident is not None
     assert loop_thread_ident is not None
@@ -151,3 +157,108 @@ def test_agent_config_local_default(monkeypatch):
 
     assert config_module.runtime_default_mcp_base_url() == "http://localhost:8000"
     assert qtick_module.MCP_BASE == "http://localhost:8000"
+
+
+
+def test_agent_run_marks_invoice_creation_requires_human(monkeypatch):
+    conversation_memory.clear()
+    tool = FastTool()
+    agent = FakeAgent(tool)
+
+    class StubCollector:
+        def __init__(self) -> None:
+            self.tool_name = "invoice_create"
+            self.tool_input = {
+                "business_id": 77,
+                "customer_name": "Alex",
+                "currency": "SGD",
+                "items": [
+                    {
+                        "description": "Signature Haircut",
+                        "quantity": 1,
+                        "unit_price": 32.0,
+                    }
+                ],
+            }
+            self.tool_output = {
+                "invoice_id": "INV-00077",
+                "total": 32.0,
+                "currency": "SGD",
+            }
+            self.final_output = "Created invoice"
+
+    monkeypatch.setattr(agent_module, "AgentRunCollector", StubCollector)
+
+    def fake_get_agent(settings):
+        return agent, [tool]
+
+    monkeypatch.setattr(agent_module, "_get_agent", fake_get_agent)
+
+    client = TestClient(app)
+    response = client.post("/agent/run", json={"prompt": "create invoice"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["requiresHuman"] is True
+    assert payload["pendingTool"] == "invoice_create"
+    assert payload["pendingToolInput"] == {
+        "business_id": 77,
+        "customer_name": "Alex",
+        "currency": "SGD",
+        "items": [
+            {
+                "description": "Signature Haircut",
+                "quantity": 1,
+                "unit_price": 32.0,
+            }
+        ],
+    }
+
+
+class NoOpCollector:
+    def __init__(self) -> None:
+        self.tool_name = None
+        self.tool_input = None
+        self.tool_output = None
+        self.final_output = None
+
+
+def test_agent_run_uses_conversation_history(monkeypatch):
+    conversation_memory.clear()
+    tool = FastTool()
+    agent = FakeAgent(tool)
+
+    monkeypatch.setattr(agent_module, "AgentRunCollector", NoOpCollector)
+    monkeypatch.setattr(agent_module, "_get_agent", lambda settings: (agent, [tool]))
+
+    client = TestClient(app)
+    first = client.post(
+        "/agent/run",
+        json={"prompt": "Book a haircut", "conversationId": "conv-1"},
+    )
+    assert first.status_code == 200
+    assert agent.prompts[0] == "Book a haircut"
+    assert len(conversation_memory.get_history("conv-1")) == 1
+
+    second = client.post(
+        "/agent/run",
+        json={"prompt": "It's for Alex", "conversationId": "conv-1"},
+    )
+    assert second.status_code == 200
+    assert len(agent.prompts) == 2
+    assert "User: Book a haircut" in agent.prompts[1]
+    assert "Assistant: Book a haircut -> tool result" in agent.prompts[1]
+    history = conversation_memory.get_history("conv-1")
+    assert len(history) == 2
+    assert history[-1].user == "It's for Alex"
+
+
+def test_conversation_memory_store_limits_turns():
+    store = ConversationMemoryStore(max_turns=3)
+    for idx in range(5):
+        store.append("demo", f"user {idx}", f"assistant {idx}")
+
+    history = store.get_history("demo")
+    assert len(history) == 3
+    assert history[0].user == "user 2"
+    assert history[-1].assistant == "assistant 4"
