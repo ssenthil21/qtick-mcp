@@ -2,13 +2,13 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import List, Optional, Protocol
 
 from google.api_core.exceptions import GoogleAPIError
 import google.generativeai as genai
 import json
-
+import sys
 from app.clients.java import JavaServiceClient
 from app.schemas.analytics import AnalyticsRequest, AnalyticsResponse
 from app.schemas.business import BusinessSummary
@@ -54,7 +54,7 @@ class GeminiDailySummaryGenerator:
         if not self._api_key:
             logger.debug("Gemini API key missing - falling back to heuristic summary")
             return self._fallback_summary(payload)
-
+        sys.stdout.reconfigure(encoding='utf-8')
         prompt = self._build_prompt(payload)
         model = genai.GenerativeModel(self._model)
         try:
@@ -63,7 +63,9 @@ class GeminiDailySummaryGenerator:
             if not text:
                 logger.warning("Gemini response did not contain text output; falling back")
                 return self._fallback_summary(payload)
-            return text.strip()
+            safe_text = text.strip().encode('utf-8', 'replace').decode()
+            print(safe_text)
+            return safe_text.strip()
         except (GoogleAPIError, ValueError) as exc:
             logger.exception("Gemini summarisation failed: %s", exc)
             return self._fallback_summary(payload)
@@ -75,16 +77,88 @@ class GeminiDailySummaryGenerator:
     def _build_prompt(payload: DailySummaryData) -> str:
         metric_lines = []
         for metric in payload.metrics:
-            base = f"- {metric.label}: {metric.value}"
-            if metric.unit:
-                base += f" {metric.unit}"
-            if metric.change_percentage is not None:
-                base += f" ({metric.change_percentage:+.1f}% vs previous)"
-            if metric.notes:
-                base += f" — {metric.notes}"
+            base = f"- {metric}"
             metric_lines.append(base)
 
         metrics_block = "\n".join(metric_lines)
+        
+        prompt = f"""
+        You are a business analytics assistant.
+        Generate a concise, professional **Markdown** daily summary for the given JSON data.
+
+        ### Time & Date Rules
+        - All timestamps in the data are in **UTC**.
+        - Convert all times to **India Standard Time (UTC +5:30)** before deciding the summary date.
+        - Use the IST date as the reporting date in the title.
+
+        ### Data Interpretation Rules
+        - Merge all metric sources (billing, daily stats, performance).
+        - If some sections show 0 but others have valid numbers (like totalSales > 0), use valid data.
+        - Prefer `totalSales` and `billCount` as primary metrics.
+        - Format all currency values as ₹ with two decimals.
+
+        ### Markdown Output Format
+        ##  Business Daily Summary – [IST date]
+        **Business ID:** [id]  
+        **Name:** [name]  
+        **Location:** [location]
+
+        ###  Sales Overview
+        | Metric | Value |
+        |---------|------:|
+        | Total Bills | n |
+        | Total Sales | ₹xx.xx |
+        | Gross Amount | ₹xx.xx |
+        | Tax Amount | ₹xx.xx |
+        | Discount | ₹xx.xx |
+        | Collected | ₹xx.xx |
+
+        **Payment Breakdown:** Cash ₹xx.xx • QR ₹xx.xx • Card ₹xx.xx
+
+        ###  Sales Performance
+        | Period | Sales |
+        |:--------|------:|
+        | Last Day | ₹xx.xx |
+        | Last 7 Days | ₹xx.xx |
+        | Last 30 Days | ₹xx.xx |
+
+        ###  Summary Insight
+        2–3 lines summarizing performance, trends, and anomalies.
+
+        ### Data:
+        {metrics_block}
+
+        Now generate the Markdown summary in IST.
+        """
+
+        return prompt
+        prompt = f"""
+        You are a business data analysis assistant that writes clear and professional daily summaries for small businesses.
+
+        ### Instructions
+        Given the JSON data below, create a **structured business daily summary** using this format:
+        - Title: "🧾 Business Daily Summary – [date]"
+        - Show key business info (ID, Name, Location)
+        - Include sections with emojis:
+         Sales Overview (with totals and payment type breakdown)
+         Sales Performance (comparisons if available)
+         Customer & Service Activity
+         Stylist & Service Stats
+         Ratings
+         Summary Insight (brief 2–3 line interpretation)
+
+        Rules:
+        - Use markdown tables where suitable
+        - Format currency as ₹ with two decimals
+        - If values are missing or zero, write "No data recorded"
+        - Keep the tone analytical but friendly
+        - Do not repeat identical values
+        - End with one-sentence insight
+
+        Now generate the summary for this JSON data:
+        {metrics_block}
+        """
+        return prompt 
         return (
             "You are a business insights assistant. Given the metrics below, "
             "write a concise daily summary with three bullet points and one "
@@ -131,7 +205,7 @@ class DailySummaryService:
             self._analytics = analytics_repository or store.analytics
             self._master_data = master_data or store.master_data
 
-    async def generate(self, request: DailySummaryRequest) -> DailySummaryResponse:
+    async def generate(self, request: DailySummaryRequest) -> str:
         logger.info(
             "Generating daily summary for business %s", request.business_id
         )
@@ -142,19 +216,25 @@ class DailySummaryService:
         )
 
         summary = await self._summarizer.summarize(payload)
+        return summary
         return DailySummaryResponse(**payload.model_dump(), summary=summary)
 
     async def _fetch_live_data(self, request: DailySummaryRequest) -> DailySummaryData:
         try:
+            startDate = datetime.strptime(request.date, "%Y-%m-%d").strftime("%d %b %Y")
             params = {
-               "startTime": request.date,
-                "endTime": request.date
+               "startTime": startDate,
+                "endTime": startDate
             }
             sales = await self._client.get(
                 f"reports/sales-report/{request.business_id}", params=params
             )
+            
+            d = datetime.strptime(request.date, "%Y-%m-%d")
+            new_date = d + timedelta(days=5)
+            formatted = new_date.strftime("%Y/%m/%d")
             params = {
-               "date": request.date
+               "date": formatted
             }
             dailySales = await self._client.get(
                 f"reports/daily-sales-report/{request.business_id}", params=params
@@ -165,10 +245,11 @@ class DailySummaryService:
             if dailySales:
                 metrics.append(json.dumps(dailySales, indent=2))
 
+            print(metrics)
             # Build structured summary
             summary = DailySummaryData(
                 business=BusinessSummary(
-                    biz_id=request.business_id,
+                    business_id=request.business_id,
                     name=getattr(request, "business_name", "Unknown")
                 ),
                 date=request.date,

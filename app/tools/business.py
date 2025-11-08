@@ -40,7 +40,7 @@ async def find_service(
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
-@router.post("/daily-summary", response_model=DailySummaryResponse)
+@router.post("/daily-summary", response_model=None)
 async def daily_summary(
     req: DailySummaryRequest,
     service: DailySummaryService = Depends(get_daily_summary_service),

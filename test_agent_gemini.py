@@ -43,8 +43,11 @@ agent = initialize_agent(
 def run_case(title: str, prompt: str):
     print("\n" + "="*88)
     print(f"{title}\nPrompt: {prompt}\n")
+    import sys
+    sys.stdout.reconfigure(encoding="utf-8")
     try:
-        print(agent.run(prompt))
+        reponseValue = agent.run(prompt)
+        print(reponseValue)
     except Exception as e:
         print("ERROR:", e)
 

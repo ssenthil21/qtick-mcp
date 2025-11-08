@@ -89,7 +89,7 @@ class LeadService:
             }
             payload = _filter_payload(payload, preserve_keys={"campId", "campName"})
 
-            data = await self._client.post("/sales-enq", payload)
+            data = await self._client.post("/biz/sales-enq", payload)
             
             record = {
                 "bizId": data.get("bizId"),
@@ -148,7 +148,7 @@ class LeadService:
                 "toDate": "",
             }
             data = await self._client.get(
-                f"/{request.business_id}/sales-enq/list", params=params
+                f"/biz/{request.business_id}/sales-enq/list", params=params
             )
             print(data)
             

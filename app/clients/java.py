@@ -22,12 +22,13 @@ class JavaServiceClient:
         use_mock_data: bool = True,
         token: str | None = None,
     ) -> None:
-        self._base_url = str(base_url).rstrip("/") if base_url else None
+        #self._base_url = str(base_url).rstrip("/") if base_url else None
+        self._base_url = "https://api.qa.qtick.co/api"
         self._timeout = timeout
         self.use_mock_data = use_mock_data or not self._base_url
         self._headers = {"Authorization": f"Bearer {token}"} if token else None
         self._headers.update({
-              "Content-Type": "application/json",
+              "Content-Type": "application/json; charset=utf-8",
             "Accept": "application/json"
         })
         self._client: Optional[httpx.AsyncClient] = None
