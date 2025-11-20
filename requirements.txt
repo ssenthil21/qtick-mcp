@@ -7,13 +7,13 @@ requests==2.31.0
 dateparser==1.2.0
 tzdata==2024.1
 
-# ---- LangChain stack ----
+# ---- Correct LangChain Stack (verified on PyPI) ----
 langchain==0.1.20
-langchain-core==0.1.32
-# (NO explicit langchain-community line!)
+langchain-core==0.1.52
+langchain-community==0.0.38
 langchain-google-genai==1.0.5
 
-# ---- Google Gemini SDK ----
+# ---- Google Gemini ----
 google-generativeai==0.5.4
 
 pytest==8.2.0
