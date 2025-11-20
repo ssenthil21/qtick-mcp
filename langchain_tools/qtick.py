@@ -7,7 +7,7 @@ from typing import List, Optional
 import dateparser
 import requests
 from zoneinfo import ZoneInfo
-from langchain.tools import StructuredTool
+from langchain_core.tools import StructuredTool
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.config import runtime_default_mcp_base_url

@@ -13,7 +13,8 @@ from app.config import Settings, get_settings
 from app.schemas.agent import AgentRunRequest, AgentRunResponse, AgentToolsResponse
 from app.services.agent_logging import AgentLoggingCallbackHandler, AgentRunCollector
 
-from langchain.agents import AgentType, initialize_agent
+from app.services.conversation_memory import ConversationTurn, conversation_memory
+from app.services.langchain_compat import AgentType, initialize_agent
 from langchain_google_genai import ChatGoogleGenerativeAI
 
 from langchain_tools.qtick import (
@@ -81,6 +82,31 @@ def _strip_nones(data: Dict[str, Any]) -> Dict[str, Any]:
     return {k: v for k, v in data.items() if v not in (None, [], {})}
 
 
+
+def _format_conversation_history(history: List[ConversationTurn]) -> str:
+    lines: List[str] = []
+    for turn in history:
+        if turn.user:
+            lines.append(f"User: {turn.user}")
+        if turn.assistant:
+            lines.append(f"Assistant: {turn.assistant}")
+    return "\n".join(lines)
+
+
+
+def _build_prompt_with_history(prompt: str, history: List[ConversationTurn]) -> str:
+    if not history:
+        return prompt
+    history_text = _format_conversation_history(history)
+    return (
+        "You are continuing a conversation with the user. Use the previous "
+        "messages to maintain context when deciding on tool calls or crafting "
+        "the final answer. The history is ordered from oldest to newest.\n\n"
+        f"Conversation so far:\n{history_text}\n\n"
+        f"Latest user request: {prompt}"
+    )
+
+
 def _safe_parse_string(value: str) -> Any:
     text = value.strip()
     if not text:
@@ -105,6 +131,27 @@ def _normalize_io(value: Any) -> Any:
         parsed = _safe_parse_string(value)
         return parsed
     return value
+
+
+def _prune_nones(value: Any) -> Any:
+    """Recursively drop ``None`` values from nested structures."""
+
+    if isinstance(value, dict):
+        return {k: _prune_nones(v) for k, v in value.items() if v is not None}
+    if isinstance(value, list):
+        return [_prune_nones(item) for item in value if item is not None]
+    return value
+
+
+def _normalize_pending_tool_input(value: Any) -> Optional[Dict[str, Any]]:
+    """Convert pending tool payloads into a JSON-serialisable dict."""
+
+    normalized = _normalize_io(value)
+    if normalized is None:
+        return None
+    if isinstance(normalized, dict):
+        return _prune_nones(normalized)
+    return {"value": normalized}
 
 
 def _summarize_appointment_book(
@@ -572,14 +619,44 @@ async def run_agent(
         agent, _ = _get_agent(settings)
         collector = AgentRunCollector()
 
+        conversation_id = req.conversation_id
+        if conversation_id and req.reset_conversation:
+            conversation_memory.reset(conversation_id)
+
+        history: List[ConversationTurn] = []
+        if conversation_id:
+            history = conversation_memory.get_history(conversation_id)
+
+        prompt_with_history = _build_prompt_with_history(req.prompt, history)
+
         def _execute(prompt: str) -> str:
             return agent.run(prompt, callbacks=[collector])
 
-        output = await asyncio.to_thread(_execute, req.prompt)
+        output = await asyncio.to_thread(_execute, prompt_with_history)
         tool_name, data_points = summarize_tool_result(
             collector.tool_name, collector.tool_input, collector.tool_output
         )
-        return AgentRunResponse(output=output, tool=tool_name, data_points=data_points)
+
+        requires_human = collector.tool_name == "invoice_create"
+        pending_tool = collector.tool_name if requires_human else None
+        pending_tool_input = (
+            _normalize_pending_tool_input(collector.tool_input)
+            if requires_human
+            else None
+        )
+
+        final_output = collector.final_output or output
+        if conversation_id:
+            conversation_memory.append(conversation_id, req.prompt, final_output)
+
+        return AgentRunResponse(
+            output=output,
+            tool=tool_name,
+            data_points=data_points,
+            requires_human=requires_human,
+            pending_tool=pending_tool,
+            pending_tool_input=pending_tool_input,
+        )
     except HTTPException:
         raise
     except GoogleAPINotFound as exc:
@@ -598,9 +675,18 @@ async def run_agent(
 @router.get("/run", response_model=AgentRunResponse)
 async def run_agent_get(
     prompt: str = Query(..., description="Your natural language instruction"),
+    conversation_id: Optional[str] = Query(None, alias="conversationId"),
+    reset_conversation: bool = Query(False, alias="resetConversation"),
     settings: Settings = Depends(get_settings),
 ):
-    return await run_agent(AgentRunRequest(prompt=prompt), settings)
+    return await run_agent(
+        AgentRunRequest(
+            prompt=prompt,
+            conversation_id=conversation_id,
+            reset_conversation=reset_conversation,
+        ),
+        settings,
+    )
 
 
 @router.get("/tools", response_model=AgentToolsResponse)
