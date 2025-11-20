@@ -10,7 +10,7 @@ tzdata==2024.1
 # LangChain + Google GenAI
 langchain==0.2.6
 langchain-google-genai==1.0.7
-google-generativeai==0.5.4
+# no explicit google-generativeai line
 
 pytest==8.2.0
 mcp[cli]
