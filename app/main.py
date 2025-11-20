@@ -22,6 +22,14 @@ from app.tools.mcp import router as mcp_router
 from app.mcp_server import mcp
 from app.health import router as health_router
 
+import sys
+from fastapi import FastAPI
+
+app = FastAPI()
+
+@app.get("/python-version")
+def python_version():
+    return {"python_version": sys.version}
 
 def configure_logging() -> None:
     """Ensure application logs use the INFO level by default."""
