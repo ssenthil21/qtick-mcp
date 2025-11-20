@@ -55,9 +55,9 @@ if __name__ == "__main__":
     # Make sure: uvicorn app.main:app --reload
     #run_case("Create Lead", "Create a new lead for business 11 named Priya N. phone +6581234567 email priya@example.com source whatsapp.")
     #run_case("List Lead", "List leads for business 11 ")
-    run_case("Daily summary", "Generate daily summary for business 119 for 10 Oct 2025")
+    #run_case("Daily summary", "Generate daily summary for business 119 for 10 Oct 2025")
     #run_case("Datetime Parse", "Convert 'tomorrow 5 PM Singapore' to ISO 8601 (just return the timestamp).")
-    #run_case("Book Appointment", "Book a haircut for Alex at business 'chillbreeze' tomorrow 5 PM SGT. Service is 'haircut'.")
+    run_case("Book Appointment", "Book a haircut for Alex at business 'chillbreeze' tomorrow 5 PM SGT. Service is 'haircut'.")
     #run_case("List Appointments", "List confirmed appointments for business 'chillbreeze' between 2025-09-01 and 2025-09-14, page size 10.")
     #run_case("Create Invoice", "Create an invoice for 'chillbreeze' for customer Alex: 1x Haircut 25 SGD (8% tax) and 2x Hair serum 12.5 SGD each (no tax).")
     #run_case("Create Lead", "Create a new lead for business 'chillbreeze' named Priya N. phone +65 8123 4567 email priya@example.com source walk-in.")

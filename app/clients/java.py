@@ -22,15 +22,23 @@ class JavaServiceClient:
         use_mock_data: bool = True,
         token: str | None = None,
     ) -> None:
-        #self._base_url = str(base_url).rstrip("/") if base_url else None
-        self._base_url = "https://api.qa.qtick.co/api"
+        # Use the base_url passed from settings; strip trailing slashes.
+        self._base_url = str(base_url).rstrip("/") if base_url else None
         self._timeout = timeout
+
+        # If no base_url, we fall back to mock mode.
         self.use_mock_data = use_mock_data or not self._base_url
-        self._headers = {"Authorization": f"Bearer {token}"} if token else None
-        self._headers.update({
-              "Content-Type": "application/json; charset=utf-8",
-            "Accept": "application/json"
-        })
+
+        # Always start with a dict for headers to avoid NoneType.update errors.
+        headers: Dict[str, str] = {
+            "Content-Type": "application/json; charset=utf-8",
+            "Accept": "application/json",
+        }
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
+
+        self._headers = headers
+
         self._client: Optional[httpx.AsyncClient] = None
         if not self.use_mock_data and self._base_url:
             self._client = self._build_client()
@@ -58,7 +66,12 @@ class JavaServiceClient:
             raise RuntimeError("Real HTTP call requested while mock mode is enabled")
         client = await self._ensure_client()
         try:
-            print(f"--- Sending to Java API ---\nURL: {path}\nPayload: {payload}\n--------------------------")
+            print(
+                f"--- Sending to Java API ---\n"
+                f"URL: {path}\n"
+                f"Payload: {payload}\n"
+                f"--------------------------"
+            )
             response = await client.post(path, json=payload)
             print(response.status_code)
             print(response.text)
@@ -102,6 +115,4 @@ class JavaServiceClient:
 
     async def simulate_latency(self) -> None:
         """Allow services to await for latency even when mocking responses."""
-
         await asyncio.sleep(0)
-
